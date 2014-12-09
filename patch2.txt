@@ -1,0 +1,93 @@
+// Lines starting with // are comments.  Lines starting with # are
+// annotations; Annotations are comments that are shown in the
+// console output when running the patcher.
+//
+// Examples:
+// hex 1b00 a901
+// text 1b00 FOOBAR
+// find text FOOBAR
+// find hex A901
+// textmap ABCD 30313233
+// textmap space 00
+
+# AAA2 patch for "Super C (U) [!].nes"
+
+// map the characters on the left to the hex codes on the right
+textmap 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'.@, 0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f2021222324252627ca
+
+// map a space character to a hex code
+textmap space 00
+
+# "PLAY SELECT"
+text 1a25 MODE SELECT
+
+# "1 PLAYER"
+text 1806 SOLO    
+text 1a33 SOLO    
+
+# "2 PLAYERS"
+text 1811 TEAM PLAY
+text 1a3e TEAM PLAY
+
+# TM AND c 1990
+text 1a4a              
+# "KONAMI INDUSTRY CO.,LTD."
+text 1a5a SBK CO. PRODUCTION 2014 
+# "LICENSED BY"
+text 1a75            
+# "NINTENDO OF AMERICA INC."
+text 1a83                         
+
+# "HI SCORE"
+text 1847         
+
+# "1P SCORE"
+text 181d         
+# "2P SCORE"
+text 1832         
+
+# "REST"
+text 185c     
+# "REST"
+text 1866     
+
+# "AREA"
+text 1870      
+# "AREA"
+text 1897      
+
+# death action = instant game over
+//hex 1f6d3 00
+
+# Starting continues
+hex 1e59d 00
+
+# Starting lives
+//hex 1e5b3 00
+
+# Lives don't matter; game over anyway
+// This is a temporary solution until we find a way to remove 1-ups
+hex 679 00
+
+# Title Screen palette (final)
+hex f999 291909291909291909291909290909291909291909291909
+
+# Title Screen palette (slide in)
+hex f9b1 0f0f0f2919090f0f0f0f0f0f0f0f0f291909291909291909
+
+
+# Title Screen palette (big C fade in)
+hex 23af 090909
+hex 23b2 090909
+hex 23b5 091909
+hex 23b8 090909
+hex 23bb 09090f
+hex 23be 290909
+
+# "GAME OVER"
+text 1879 WTF FAIL 
+
+# -- Experiments below this line --
+
+# Stage Select
+//hex 1e4f8 03
