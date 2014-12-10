@@ -63,7 +63,7 @@ text 1897
 hex 1e59d 00
 
 # Starting lives
-//hex 1e5b3 00
+hex 1e5b3 00
 
 # Lives don't matter; game over anyway
 // This is a temporary solution until we find a way to remove 1-ups
@@ -84,8 +84,39 @@ hex 23b8 090909
 hex 23bb 09090f
 hex 23be 290909
 
+# Player Palettes
+//hex f8e5 291909291909
+//hex f8e5 190c0f190b0f
+hex f8e5 370c0f380b0f
+
 # "GAME OVER"
 text 1879 WTF FAIL 
+
+# Credits:
+# "STAFF"
+text 254e STAFF
+# "PROGRAMMER"
+text 2556 PROGRAMMER
+# "S.UMEZAKI"
+text 2563 S.UMEZAKI
+# "GRAPHIC DESIGN"
+text 256f GRAPHIC DESIGN
+# "S.MURAKI"
+text 2580 S.MURAKI
+# "SOUND DESIGN"
+text 258b SOUND DESIGN
+# "H.MAEZAWA"
+text 259a H.MAEZAWA
+# "SPECIAL THANKS"
+text 25a6 SPECIAL THANKS
+# "K.SHIMOIDE"
+text 25b7 K.SHIMOIDE
+# "SUPER C TEAM"
+text 25c4 SUPER C TEAM
+# "DIRECTED BY"
+text 25d3 DIRECTED BY
+# "UMECHAN TEAM"
+text 25e1 UMECHAN TEAM
 
 # -- Experiments below this line --
 
