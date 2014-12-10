@@ -136,6 +136,13 @@ hex 1b3cf 291909
 # starting lives
 hex 1c472 00
 
+# starting lives (cheat)
+hex 1c478 00
+
+# Change action for cheat code from setting lives to setting player state to death state
+// a91d9532 -> a9029590
+hex 1c477 a9029590
+
 # starting continues
 hex 1c454 00
 
@@ -158,4 +165,3 @@ hex 1d23b 19
 
 //# show ending instead of start
 //hex 1c3e7 06
-

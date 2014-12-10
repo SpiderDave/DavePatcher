@@ -86,8 +86,6 @@ hex 23bb 09090f
 hex 23be 290909
 
 # Player Palettes
-//hex f8e5 291909291909
-//hex f8e5 190c0f190b0f
 hex f8e5 370c0f380b0f
 
 # "GAME OVER"
@@ -149,3 +147,9 @@ hex 1f9d9 291909
 
 # last trailing spaces on title screen 7000 = 0x70 blank spaces
 //hex 1a9b 7000
+
+// positioning for credits text "STAFF" y,x.  followed by lenth of text, text
+//hex 254b 0205
+
+// positioning for credits text "PROGRAMMER"  y,x
+//hex 2553 0b00
