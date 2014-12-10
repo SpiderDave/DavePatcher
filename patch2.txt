@@ -42,19 +42,20 @@ text 1a83
 text 1847         
 
 # "1P SCORE"
-text 181d         
+text 181d NUCKING 
 # "2P SCORE"
-text 1832         
+text 1832      SBK
 
 # "REST"
-text 185c     
+//text 185c     
 # "REST"
-text 1866     
+//text 1866     
 
-# "AREA"
-text 1870      
-# "AREA"
-text 1897      
+# "AREA" (Stats screen)
+//text 1870      
+
+# "AREA" (stage select)
+//text 1897      
 
 # death action = instant game over
 //hex 1f6d3 00
@@ -118,7 +119,33 @@ text 25d3 DIRECTED BY
 # "UMECHAN TEAM"
 text 25e1 UMECHAN TEAM
 
+//hex 1858 01fe21 01=char for last digit of hi score, fd=score positioning?
+# 01fe21 -> 01ffff hide high score, and rest text (positioning hack)
+// Note: causes a minor graphics glitch in game over screen; needs work
+hex 1858 01ffff
+
+# reposition text "1P SCORE"
+hex 181b 2083
+
+# reposition text "2P SCORE"
+hex 1830 2093
+
+# reposition (remove) player 1 score
+hex 1826 0000
+
+# reposition (remove) player 2 score
+hex 183b 0000
+
+# stats screen/game over palette
+hex 1f9d9 291909
+
 # -- Experiments below this line --
 
 # Stage Select
 //hex 1e4f8 03
+
+# start of title screen data 6b00 = 0x6b blank spaces
+//hex 1947 2b
+
+# last trailing spaces on title screen 7000 = 0x70 blank spaces
+//hex 1a9b 7000
