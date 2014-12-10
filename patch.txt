@@ -136,6 +136,9 @@ hex 1b3cf 291909
 # starting lives
 hex 1c472 00
 
+# starting continues
+hex 1c454 00
+
 # ???
 hex 1c512 eaea
 
@@ -155,5 +158,4 @@ hex 1d23b 19
 
 //# show ending instead of start
 //hex 1c3e7 06
-
 
