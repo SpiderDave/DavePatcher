@@ -75,7 +75,15 @@ hex 1e767 05
 hex 1e59d 00
 
 # Starting lives (using ff will make it so we don't see that 1 life before exiting the chopper)
-hex 1e5b3 ff
+// We use 01 here because it will decrement with the following parameter
+hex 1e5b3 01
+
+# remove life instead of adding one at game start
+// This is normally to make the lives mean "extra lives" and it removes one when you start.
+hex 1e855 d653
+
+# change lives decrement at game start to something useless
+hex 594 f657
 
 # Lives don't matter; game over anyway
 // This is a temporary solution until we find a way to remove 1-ups
