@@ -41,6 +41,9 @@ text 1a83
 # "HI SCORE"
 text 1847         
 
+# remove high score
+hex 1850 0000
+
 # "1P SCORE"
 text 181d NUCKING 
 # "2P SCORE"
@@ -51,8 +54,16 @@ text 1832      SBK
 # "REST"
 //text 1866     
 
+# Remove player 1 lives "REST x"
+hex 1e75d 05
+# Remove player 2 lives "REST x"
+hex 1e767 05
+
 # "AREA" (Stats screen)
 //text 1870      
+
+// # Remove text "AREA x"
+//hex 1e734 05
 
 # "AREA" (stage select)
 //text 1897      
@@ -63,8 +74,8 @@ text 1832      SBK
 # Starting continues
 hex 1e59d 00
 
-# Starting lives
-hex 1e5b3 00
+# Starting lives (using ff will make it so we don't see that 1 life before exiting the chopper)
+hex 1e5b3 ff
 
 # Lives don't matter; game over anyway
 // This is a temporary solution until we find a way to remove 1-ups
@@ -85,42 +96,50 @@ hex 23b8 090909
 hex 23bb 09090f
 hex 23be 290909
 
-# Player Palettes
+# Player Palettes (Area 1-8)
 hex f8e5 370c0f380b0f
+hex f8fd 370c0f380b0f
+hex f915 370c0f380b0f
+hex f92d 370c0f380b0f
+hex f945 370c0f380b0f
+hex f95d 370c0f380b0f
+hex f975 370c0f380b0f
+hex f98d 370c0f380b0f
 
 # "GAME OVER"
 text 1879 WTF FAIL 
 
 # Credits:
 # "STAFF"
-text 254e STAFF
+text 254e  WOW 
 # "PROGRAMMER"
-text 2556 PROGRAMMER
+text 2556 YOU DID IT
 # "S.UMEZAKI"
-text 2563 S.UMEZAKI
+text 2563 CONGRATS 
 # "GRAPHIC DESIGN"
-text 256f GRAPHIC DESIGN
+text 256f ROMHACK BY    
 # "S.MURAKI"
-text 2580 S.MURAKI
+text 2580 S. DAVE 
 # "SOUND DESIGN"
-text 258b SOUND DESIGN
+text 258b 2014        
 # "H.MAEZAWA"
-text 259a H.MAEZAWA
+text 259a          
 # "SPECIAL THANKS"
 text 25a6 SPECIAL THANKS
 # "K.SHIMOIDE"
-text 25b7 K.SHIMOIDE
+text 25b7 SBK       
 # "SUPER C TEAM"
-text 25c4 SUPER C TEAM
+text 25c4             
 # "DIRECTED BY"
-text 25d3 DIRECTED BY
+text 25d3 INSPIRED BY
 # "UMECHAN TEAM"
-text 25e1 UMECHAN TEAM
+text 25e1 SBK         
 
 //hex 1858 01fe21 01=char for last digit of hi score, fd=score positioning?
 # 01fe21 -> 01ffff hide high score, and rest text (positioning hack)
 // Note: causes a minor graphics glitch in game over screen; needs work
-hex 1858 01ffff
+// causes a crash on area 4 death
+//hex 1858 01ffff
 
 # reposition text "1P SCORE"
 hex 181b 2083
@@ -136,6 +155,12 @@ hex 183b 0000
 
 # stats screen/game over palette
 hex 1f9d9 291909
+
+# increment the "next points to 1up" counter instead of lives on 1up from points
+hex 1e6cf f657
+
+# change sound effect for getting 1up to nothing
+hex 1e6d1 a900
 
 # -- Experiments below this line --
 
@@ -153,3 +178,4 @@ hex 1f9d9 291909
 
 // positioning for credits text "PROGRAMMER"  y,x
 //hex 2553 0b00
+
