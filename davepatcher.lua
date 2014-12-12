@@ -1,7 +1,12 @@
-version='DavePatcher 0.1'
+local patcher = {
+    startAddress=0
+}
 
-function BARF(errortext)
-  print(errortext)
+version='DavePatcher 0.2'
+patcher.version = version
+
+function quit(text)
+  if text then print(text) end
   os.exit()
 end
 
@@ -80,9 +85,58 @@ function mapText(txt)
     return txtNew
 end
 
+function showHelp()
+    print(version)
+    print("\nUsage: davepatcher <patch file> <file to patch>\n  Example: davepatcher patch.txt contra.nes")
+    print()
+    if arg[1]=="-?" or arg[1]=="/?" or arg[1]=="/help" or arg[1]=="/h" or arg[1]=="-h" then
+        print [[
+Lines starting with // are comments.
+    // This is a comment
+Lines starting with # are "annotations"; Annotations are comments that are shown in the output when running the patcher.
+    # This is an annotation
+Keywords are lowercase, usually followed by a space.  Some "keywords" consist of multiple words.  Possible keywords:
+    hex <address> <data>
+        Set data at <address> to <data>.  <data> should be hexidecimal, and its length should be a multiple of 2.
+        Example:
+            hex a010 0001ff
+    text <address> <text>
+        Set data at <address> to <text>.  Use the textmap command to set a custom format for the text.  If no textmap is set, ASCII is assumed.
+        Example:
+            hex a010 FOOBAR
+    find text <text>
+        Find text data.  Use the textmap command to set a custom format for the text.  If no textmap is set, ASCII is assumed.
+        Example:
+            find text FOOBAR
+    find hex <data>
+        Find data in hexidecimal.  The length of the data must be a multiple of 2.
+        Example:
+            find hex 00ff1012
+    textmap <characters> <map to>
+        Map text characters to specific values.  These will be used in other commands like the "text" command.
+        Example:
+            textmap ABCD 30313233
+    textmap space <map to>
+        Use this format to map the space character.
+        Example:
+            textmap space 00
+    break
+        Use this to end the patch early.  Handy if you want to add some testing stuff at the bottom.
+    start <address>
+        Set the starting address for commands
+        Example:
+            start 10200
+            find hex a901
+]]
+    else
+        print("For more information, type davepatcher -?")
+    end
+end
+
 file=arg[2]
 if not arg[1] or not arg[2] or arg[3] then
-    BARF(version.."\n\nUsage: davepatcher <patch file> <file to patch>\n  Example: davepatcher patch.txt contra.nes")
+    showHelp()
+    quit()
 end
 
 file_dumptext = nil
@@ -90,10 +144,24 @@ filedata=getfilecontents(file)
 
 local patchfile = io.open(arg[1] or "patch.txt","r")
 while true do
-local line = patchfile:read("*l")
+    local line = patchfile:read("*l")
     if line == nil then break end
     if startsWith(line, '#') then
         print(string.sub(line,1))
+    elseif startsWith(line, 'find hex ') then
+        local data=string.sub(line,10)
+        address=0
+        print(string.format("Find hex: %s",data))
+        for i=1,50 do
+            address = filedata:find(hex2bin(data),address+1, true)
+            if address then
+                if address>patcher.startAddress then
+                    print(string.format("    %s Found at 0x%08x",data,address-1))
+                end
+            else
+                break
+            end
+        end
     elseif startsWith(line, 'find text') then
         local txt=string.sub(line,11)
         address=0
@@ -101,7 +169,9 @@ local line = patchfile:read("*l")
         for i=1,10 do
             address = filedata:find(mapText(txt),address+1)
             if address then
-                print(string.format("    %s Found at 0x%08x",txt,address-1))
+                if address>patcher.startAddress then
+                    print(string.format("    %s Found at 0x%08x",txt,address-1))
+                end
             else
                 if i==1 then
                     print "    Not found."
@@ -119,7 +189,7 @@ local line = patchfile:read("*l")
         
         txt=mapText(txt)
         
-        if not writeToFile(file, address,txt) then BARF("Error: Could not write to file.") end
+        if not writeToFile(file, address,txt) then quit("Error: Could not write to file.") end
     elseif startsWith(line, 'textmap ') then
         local data=string.sub(line,9)
         local mapOld = data:sub(1,(data:find(' ')-1))
@@ -141,23 +211,17 @@ local line = patchfile:read("*l")
         old=filedata:sub(address+1,address+#txt/2)
         old=bin2hex(old)
         print(string.format("Setting hex bytes: 0x%08x: %s --> %s",address,old, txt))
-        if not writeToFile(file, address,hex2bin(txt)) then BARF("Error: Could not write to file.") end
-    elseif startsWith(line, 'find hex ') then
-        local data=string.sub(line,10)
-        address=0
-        print "find"
-        for i=1,50 do
-            address = filedata:find(hex2bin(data),address+1, true)
-            if address then
-                print(string.format("    %s Found at 0x%08x",data,address-1))
-            else
-                break
-            end
-        end
+        if not writeToFile(file, address,hex2bin(txt)) then quit("Error: Could not write to file.") end
+    elseif line=="break" then
+        print("[break]")
+        break
+    elseif startsWith(line, 'start ') then
+        local data=string.sub(line,7)
+        patcher.startAddress = tonumber(data, 16)
+        print("Setting Start Address: "..data)
     end
 end
 patchfile:close()
-print('\n')
 print('done.')
 
 
