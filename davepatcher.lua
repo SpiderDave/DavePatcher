@@ -1,8 +1,12 @@
 local patcher = {
-    version='DavePatcher 0.4',
+    name = "DavePatcher",
+    version = "0.5",
+    released = "2015",
+    author = "SpiderDave",
     startAddress=0,
     offset = 0,
-    verbose = false
+    verbose = false,
+    interactive = false
 }
 
 if patcher.verbose then
@@ -103,62 +107,120 @@ function mapText(txt)
     return txtNew
 end
 
-function showHelp()
-    print(patcher.version)
-    print("\nUsage: davepatcher <patch file> <file to patch>\n  Example: davepatcher patch.txt contra.nes")
+function showHelp(quick)
+    print(string.format("%s version %s - %s %s",patcher.name,patcher.version,patcher.released,patcher.author))
     print()
-    if arg[1]=="-?" or arg[1]=="/?" or arg[1]=="/help" or arg[1]=="/h" or arg[1]=="-h" then
+    if not patcher.interactive then
+        print [[
+Usage: davepatcher [options...] <patch file> <file to patch>
+       davepatcher [options...] -i <file to patch>
+General options:
+  -h          show help
+  -i          interactive mode
+        ]]
+    end
+    print()
+    if not quick then
         print [[
 Lines starting with // are comments.
+
     // This is a comment
-Lines starting with # are "annotations"; Annotations are comments that are shown in the output when running the patcher.
+    
+Lines starting with # are "annotations"; Annotations are comments that are
+shown in the output when running the patcher.
+    
     # This is an annotation
-Keywords are lowercase, usually followed by a space.  Some "keywords" consist of multiple words.  Possible keywords:
+    
+Keywords are lowercase, usually followed by a space.  Some "keywords" consist
+of multiple words.  Possible keywords:
+
+    help
+        Show this help.  May be useful in interactive mode.
+        
     hex <address> <data>
-        Set data at <address> to <data>.  <data> should be hexidecimal, and its length should be a multiple of 2.
+        Set data at <address> to <data>.  <data> should be hexidecimal, and
+        its length should be a multiple of 2.
         Example:
             hex a010 0001ff
+            
+    copy hex <address1> <address2> <length>
+        Copies data from <address1> to <address2>.  The number of bytes is
+        specified in hexidecimal by <length>.
+
+        Example:
+            copy hex a010 b010 0a
+            
     text <address> <text>
-        Set data at <address> to <text>.  Use the textmap command to set a custom format for the text.  If no textmap is set, ASCII is assumed.
+        Set data at <address> to <text>.  Use the textmap command to set a 
+        custom format for the text.  If no textmap is set, ASCII is assumed.
         Example:
             hex a010 FOOBAR
+            
     find text <text>
-        Find text data.  Use the textmap command to set a custom format for the text.  If no textmap is set, ASCII is assumed.
+        Find text data.  Use the textmap command to set a custom format for
+        the text.  If no textmap is set, ASCII is assumed.
         Example:
             find text FOOBAR
+            
     find hex <data>
-        Find data in hexidecimal.  The length of the data must be a multiple of 2.
+        Find data in hexidecimal.  The length of the data must be a multiple
+        of 2.
         Example:
             find hex 00ff1012
+            
     textmap <characters> <map to>
-        Map text characters to specific values.  These will be used in other commands like the "text" command.
+        Map text characters to specific values.  These will be used in other
+        commands like the "text" command.
         Example:
             textmap ABCD 30313233
+            
     textmap space <map to>
         Use this format to map the space character.
         Example:
             textmap space 00
+            
     break
-        Use this to end the patch early.  Handy if you want to add some testing stuff at the bottom.
+        Use this to end the patch early.  Handy if you want to add some
+        testing stuff at the bottom.
+        
     start <address>
         Set the starting address for commands
         Example:
             start 10200
             find hex a901
+            
     offset <address>
-        Set the offset to use.  All addresses used and shown will be offset by this amount.  This is useful when the file contains a header you'd like to skip.
+        Set the offset to use.  All addresses used and shown will be offset by
+        this amount.  This is useful when the file contains a header you'd like
+        to skip.
         Example:
             offset 10
+            
+    ips <file>
+        apply ips patch to the file
+    
+    refresh
+        refreshes the data so that keywords like "find text" will use the new
+        altered data.
 ]]
     else
         print("For more information, type davepatcher -?")
     end
 end
 
-file=arg[2]
-if not arg[1] or not arg[2] or arg[3] then
+if arg[1]=="-?" or arg[1]=="/?" or arg[1]=="/help" or arg[1]=="/h" or arg[1]=="-h" then
     showHelp()
     quit()
+end
+
+file=arg[2]
+if not arg[1] or not arg[2] or arg[3] then
+    showHelp(true)
+    quit()
+end
+
+if arg[1] == "-i" then
+    patcher.interactive = true
 end
 
 printVerbose(string.format("file: %s",file))
@@ -166,14 +228,29 @@ printVerbose(string.format("file: %s",file))
 file_dumptext = nil
 filedata=getfilecontents(file)
 
-local patchfile = io.open(arg[1] or "patch.txt","r")
+local patchfile
+if not patcher.interactive==true then
+    patchfile = io.open(arg[1] or "patch.txt","r")
+end
+local breakLoop = false
 while true do
-    local line = patchfile:read("*l")
+    local line
+    if patcher.interactive==true then
+        io.write(">")
+        line = io.stdin:read("*l")
+    else
+        line = patchfile:read("*l")
+    end
     if line == nil then break end
+    
+    local status, err = pcall(function()
+    
     if startsWith(line, '#') then
         print(string.sub(line,1))
     elseif startsWith(line, '//') then
         -- comment
+    elseif startsWith(line, 'help') then
+        showHelp()
     elseif startsWith(line, 'find hex ') then
         local data=string.sub(line,10)
         address=0
@@ -268,9 +345,10 @@ while true do
         data = filedata:sub(address+1+patcher.offset,address+1+patcher.offset+l-1)
         print(string.format("Copying 0x%08x bytes from 0x%08x to 0x%08x",l, address, address2))
         if not writeToFile(file, address2+patcher.offset,data) then quit("Error: Could not write to file.") end
-    elseif line=="break" then
+    elseif line=="break" or line == "quit" or line == "exit" then
         print("[break]")
-        break
+        --break
+        breakLoop=true
     elseif line=="refresh" then
         filedata=getfilecontents(file)
     elseif startsWith(line, 'start ') then
@@ -341,15 +419,23 @@ while true do
         end
         print("ips done.")
         
-        
-
 --        old=filedata:sub(address+1+patcher.offset,address+patcher.offset+#txt/2)
 --        old=bin2hex(old)
-
-
+    end
+    end)
+    
+    if status==true then
+        -- no errors
+    else
+        quit(err)
+    end
+    if breakLoop==true then
+        break
     end
 end
-patchfile:close()
+if not patcher.interactive then
+    patchfile:close()
+end
 print('done.')
 
 
