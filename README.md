@@ -1,13 +1,6 @@
 ```
-DavePatcher version 0.5 - 2015 SpiderDave
-
-Usage: davepatcher [options...] <patch file> <file to patch>
-       davepatcher [options...] -i <file to patch>
-General options:
-  -h          show help
-  -i          interactive mode
-        
-
+DavePatcher 0.5.3 (2015) - SpiderDave https://github.com/SpiderDave/DavePatcher
+A custom patcher for use with NES romhacking or general use.
 Lines starting with // are comments.
 
     // This is a comment
@@ -21,6 +14,7 @@ Keywords are lowercase, usually followed by a space.  Some "keywords" consist
 of multiple words.  Possible keywords:
 
     help
+    commands
         Show this help.  May be useful in interactive mode.
         
     hex <address> <data>
@@ -85,6 +79,10 @@ of multiple words.  Possible keywords:
     ips <file>
         apply ips patch to the file
     
+    gg <gg code>
+        WIP
+        decode a NES Game Genie code (does not apply it)
+        
     refresh
         refreshes the data so that keywords like "find text" will use the new
         altered data.
