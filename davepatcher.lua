@@ -1,6 +1,6 @@
 local patcher = {
     name = "DavePatcher",
-    version = "0.5",
+    version = "0.5.2",
     released = "2015",
     author = "SpiderDave",
     startAddress=0,
@@ -114,7 +114,8 @@ function showHelp(quick)
         print [[
 Usage: davepatcher [options...] <patch file> <file to patch>
        davepatcher [options...] -i <file to patch>
-General options:
+
+Options:
   -h          show help
   -i          interactive mode
         ]]
@@ -328,6 +329,49 @@ while true do
         old=bin2hex(old)
         print(string.format("Setting hex bytes: 0x%08x: %s --> %s",address,old, txt))
         if not writeToFile(file, address+patcher.offset,hex2bin(txt)) then quit("Error: Could not write to file.") end
+    elseif startsWith(line, 'gg ') then
+        local data=string.sub(line,4)
+        local gg=data:upper()
+        -- Used to map the GG characters to binary
+        local ggMap={
+            A="0000", P="0001", Z="0010", L="0011", G="0100", I="0101", T="0110", Y="0111",
+            E="1000", O="1001", X="1010", U="1011", K="1100", S="1101", V="1110", N="1111"
+        }
+        --ggMap2={1,6,7,8,17,2,3,4,nil,18,19,20,21,10,11,12,13,22,23,24,5,14,15,16}
+        --ggMap2={1,6,7,8,17,2,3,4,-,18,19,20,21,10,11,12,13,22,23,24,29,14,15,16,25,30,31,32,5,26,27,28}
+        if #gg == 6 then
+            ggMap2={1,6,7,8,21,2,3,4,nil,14,15,16,17,22,23,24,5,10,11,12,13,18,19,20}
+        elseif #gg == 8 then
+            ggMap2={1,6,7,8,29,2,3,4,nil,14,15,16,17,22,23,24,5,10,11,12,13,18,19,20,25,30,31,32,21,26,27,28}
+        else
+            quit("Error: Bad gg length")
+        end
+        
+        -- Map to binary string
+        local binString=""
+        for i=1,#gg do
+            binString=binString..ggMap[gg:sub(i,i)]
+        end
+        
+        -- Unscramble the binary string
+        local binString2=""
+        for i=1,#binString do
+            if ggMap2[i] then
+                binString2=binString2..binString:sub(ggMap2[i],ggMap2[i])
+            else
+                binString2=binString2.." "
+            end
+        end
+        if #gg == 6 then
+            local value=tonumber(binString2:sub(1,8),2)
+            local address=tonumber(binString2:sub(10),2)
+            print(string.format("gg %s: 0x%08x value=0x%02x",gg,address,value))
+        elseif #gg == 8 then
+            local value = tonumber(binString2:sub(1,8),2)
+            local address = tonumber(("1"..binString2:sub(10,24)),2)
+            local compare = tonumber(binString2:sub(25,32),2)
+            print(string.format("gg %s: 0x%08x compare=0x%02x value=0x%02x",gg,address,compare,value))
+        end
     elseif startsWith(line, 'copy hex ') then
         local data=string.sub(line,10)
         local address = data:sub(1,(data:find(' ')))
@@ -338,10 +382,6 @@ while true do
         address = tonumber(address, 16)
         address2 = tonumber(address2, 16)
         l = tonumber(l, 16)
-        --txt=data:sub((data:find(' ')+1))
-        --old=filedata:sub(address+1+patcher.offset,address+patcher.offset+#txt/2)
-        --old=bin2hex(old)
-        --print(string.format("test 0x%08x 0x%08x 0x%08x",address, address2, l))
         data = filedata:sub(address+1+patcher.offset,address+1+patcher.offset+l-1)
         print(string.format("Copying 0x%08x bytes from 0x%08x to 0x%08x",l, address, address2))
         if not writeToFile(file, address2+patcher.offset,data) then quit("Error: Could not write to file.") end
