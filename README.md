@@ -79,6 +79,21 @@ of multiple words.  Possible keywords:
     ips <file>
         apply ips patch to the file
     
+    palette file <file>
+        set the available NES palette via file
+        Example:
+            palette file FCEUX.pal
+    
+    palette <data>
+        set the current 4-color palette from a hexidecimal string.
+        Example:
+            palette 0f182737
+    
+    export <address> <nTiles> <file>
+        export tile data to png file.
+        Example:
+            export 20010 100 tiles.png
+    
     gg <gg code>
         WIP
         decode a NES Game Genie code (does not apply it)
@@ -86,5 +101,4 @@ of multiple words.  Possible keywords:
     refresh
         refreshes the data so that keywords like "find text" will use the new
         altered data.
-
 ```
