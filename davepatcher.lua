@@ -158,6 +158,11 @@ of multiple words.  Possible keywords:
         Example:
             export 20010 100 tiles.png
     
+    import <address> <nTiles> <file>
+        import tile data from png using current palette as a reference.
+        Example:
+            import 20010 100 tiles.png
+
     gg <gg code>
         WIP
         decode a NES Game Genie code (does not apply it)
@@ -356,13 +361,75 @@ function bit.isSet(n,b)
     end
 end
 
+function imageToTile(len, fileName)
+    local out = {
+        t={}
+    }
+    
+    local nTiles = len/16
+    
+    local image = gd.createFromPng(fileName)
+    local h = math.max(8,math.floor(nTiles/16)*8)
+    local w = math.min(16, nTiles)*8
+    local colors={}
+    for i=0,3 do
+        --print(string.format("%02x %02x %02x",table.unpack(nesPalette[colors[i]])))
+        colors[i]=image:colorAllocate(table.unpack(patcher.palette[patcher.colors[i]]))
+    end
+    local xo=0
+    local yo=0
+    
+    local pr,pg,pb = table.unpack(patcher.palette[patcher.colors[3]])
+    for t=0,nTiles-1 do
+        out.t[t] = {}
+        for y = 0, 7 do
+            out.t[t][y] = 0
+            out.t[t][y+8] = 0
+            --local byte = string.byte(tileData:sub(t*16+y+1,t*16+y+1))
+            --local byte2 = string.byte(tileData:sub(t*16+y+9,t*16+y+9))
+            for x=0, 7 do
+                local c=0
+                --if bit.isSet(byte,7-x)==true then c=c+1 end
+                --if bit.isSet(byte2,7-x)==true then c=c+2 end
+                local c = image:getPixel(x+xo,y+yo)
+                local r,g,b=image:red(c),image:green(c),image:blue(c)
+                
+                for i=0,3 do
+                    local pr,pg,pb = table.unpack(patcher.palette[patcher.colors[i]])
+                    if string.format("%02x%02x%02x",r,g,b) == string.format("%02x%02x%02x",pr,pg,pb) then
+                        --io.write("*")
+                        --out.t[t][y*8+x]=i % 2
+                        --out.t[t][y*8+x+8]=math.floor(i / 2)
+                        out.t[t][y]=out.t[t][y] + (2^(7-x)) * (i%2)
+                        out.t[t][y+8]=out.t[t][y+8] + (2^(7-x)) * (math.floor(i/2))
+                    end
+                end
+                
+                --print(string.format("%02x (%02x,%02x) %02x%02x%02x  %02x%02x%02x",t, x,y, r,g,b,  pr,pg,pb))
+            end
+        end
+        xo=xo+8
+        if xo>=w then
+            xo=0
+            yo=yo+8
+        end
+        --io.write("\n")
+    end
+    local tileData = ""
+    for t=0,nTiles-1 do
+        for i=0,#out.t[t] do
+            tileData = tileData .. string.char(out.t[t][i])
+        end
+    end
+    return tileData
+end
 
 function tileToImage(tileData, fileName)
     local nTiles = #tileData/16
     
     local h = math.max(8,math.floor(nTiles/16)*8)
     local w = math.min(16, nTiles)*8
-    image=gd.createTrueColor(w,h)
+    local image=gd.createTrueColor(w,h)
     local colors={}
     for i=0,3 do
         --print(string.format("%02x %02x %02x",table.unpack(nesPalette[colors[i]])))
@@ -510,10 +577,25 @@ while true do
         --old=bin2hex(old)
         
         --print(string.format("Hex data at 0x%08x: %s",address, old))
-        print(string.format("exporting tile at 0x%08x",address))
+        print(string.format("exporting tile data at 0x%08x",address))
         tileToImage(tileData, fileName)
         
+    elseif startsWith(line, 'import ') then
+        if not gd then
+            quit("Error: could not use import command because gd did not load.")
+        end
+        local dummy, address,len,fileName=unpack(util.split(line," ",3))
+        address=tonumber(address,16)
+        len=tonumber(len,16)*16
         
+        --local old=filedata:sub(address+1+patcher.offset,address+patcher.offset+len)
+        --tileData = filedata:sub(address+1+patcher.offset,address+patcher.offset+len)
+        --old=bin2hex(old)
+        
+        --print(string.format("Hex data at 0x%08x: %s",address, old))
+        print(string.format("importing tile at 0x%08x",address))
+        local tileData = imageToTile(len, fileName)
+        if not writeToFile(file, address+patcher.offset,tileData) then quit("Error: Could not write to file.") end
     elseif startsWith(line, 'text ') then
         line=lineOld
         local data=string.sub(line,6)
