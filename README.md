@@ -19,7 +19,8 @@ of multiple words.  Possible keywords:
         
     hex <address> <data>
         Set data at <address> to <data>.  <data> should be hexidecimal, and
-        its length should be a multiple of 2.
+        its length should be a multiple of 2.  You may include spaces in data
+        for readability.
         Example:
             hex a010 0001ff
             
@@ -94,6 +95,11 @@ of multiple words.  Possible keywords:
         Example:
             export 20010 100 tiles.png
     
+    import <address> <nTiles> <file>
+        import tile data from png using current palette as a reference.
+        Example:
+            import 20010 100 tiles.png
+
     gg <gg code>
         WIP
         decode a NES Game Genie code (does not apply it)
@@ -101,4 +107,24 @@ of multiple words.  Possible keywords:
     refresh
         refreshes the data so that keywords like "find text" will use the new
         altered data.
+        
+    code
+        Execute Lua code
+        Example:
+            code print("Hello World!")
+        
+    eval
+        Evaluate Lua expression and print the result
+        Examples:
+            eval "Hello World!"
+            eval 5+5*2^10
+        
+    verbose [on | off]
+        Turn verbose mode on or off.  This prints more information when using
+        various commands.  If verbose is used without a parameter, off is
+        assumed.
+        
+    diff <file>
+        Show differences between the current file and <file>
+
 ```

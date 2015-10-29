@@ -1,3 +1,8 @@
+-- ToDo:
+--  * import/export tiles to/from sections of an existing image
+--  * create tile maps to make above easier
+--  * apply game genie codes
+
 table.unpack = table.unpack or unpack
 local gd
 
@@ -11,6 +16,19 @@ end
 --local winapi = require("winapi")
 
 local util={}
+
+--local condition = load_code("return " .. args.condition, context)
+
+util.printf = function(s,...)
+    --return io.write(s:format(...))
+    return print(s:format(...))
+end
+
+util.stripSpaces = function(s)
+    return string.gsub(s, "%s", "")
+end
+
+printf = util.printf
 
 function util.split(s, delim, max)
   assert (type (delim) == "string" and string.len (delim) > 0,
@@ -50,6 +68,7 @@ local patcher = {
     verbose = false,
     interactive = false,
     prompt = "> ",
+    tileMap={}
 }
 
 patcher.help.info = string.format("%s %s (%s) - %s %s",patcher.info.name,patcher.info.version,patcher.info.released,patcher.info.author,patcher.info.url)
@@ -83,7 +102,8 @@ of multiple words.  Possible keywords:
         
     hex <address> <data>
         Set data at <address> to <data>.  <data> should be hexidecimal, and
-        its length should be a multiple of 2.
+        its length should be a multiple of 2.  You may include spaces in data
+        for readability.
         Example:
             hex a010 0001ff
             
@@ -170,12 +190,31 @@ of multiple words.  Possible keywords:
     refresh
         refreshes the data so that keywords like "find text" will use the new
         altered data.
+        
+    code
+        Execute Lua code
+        Example:
+            code print("Hello World!")
+        
+    eval
+        Evaluate Lua expression and print the result
+        Examples:
+            eval "Hello World!"
+            eval 5+5*2^10
+        
+    verbose [on | off]
+        Turn verbose mode on or off.  This prints more information when using
+        various commands.  If verbose is used without a parameter, off is
+        assumed.
+        
+    diff <file>
+        Show differences between the current file and <file>
 ]]
 
-if patcher.verbose then
-    printVerbose = print
-else
-    printVerbose = function() end
+printVerbose = function(txt)
+    if patcher.verbose then
+        print(txt)
+    end
 end
 
 patcher.colors={[0]=0x0f,0x0c,0x1c,0x3c}
@@ -246,13 +285,54 @@ patcher.palette={[0]=
 {0x00,0x00,0x00},
 }
 
+util.sandbox = {}
+
+util.sandbox.context = {
+    string=string,
+    table=table,
+    print=print,
+
+    math=math,
+    min = math.min,
+    max = math.max,
+    abs = math.abs,
+    exp = math.exp,
+    log = math.log,
+    sin = math.sin,
+    atan2 = math.atan2,
+    cos = math.cos,
+    
+    util=util,
+    patcher=patcher,
+}
+
+util.sandbox.loadCode = function(self, code)
+    environment = self.context
+    if setfenv and loadstring then
+        local f = assert(loadstring(code))
+        setfenv(f,environment)
+        return f
+    else
+        return assert(load(code, nil,"t",environment))
+    end
+end
+
 function quit(text)
   if text then print(text) end
   os.exit()
 end
 
-function trim(s)
+function util.trim(s)
   return (s:gsub("^%s*(.-)%s*$", "%1"))
+end
+
+function util.ltrim(s)
+  return (s:gsub("^%s*", ""))
+end
+function util.rtrim(s)
+  local n = #s
+  while n > 0 and s:find("^%s", n) do n = n - 1 end
+  return s:sub(1, n)
 end
 
 function startsWith(haystack, needle)
@@ -277,7 +357,16 @@ function setfilecontents(file, data)
     return true
 end
 
-function writeToFile(file,address, data)
+function util.fileExists(name)
+   local f=io.open(name,"r")
+   if f~=nil then io.close(f) return true else return false end
+end
+
+function util.writeToFile(file,address, data)
+    if not util.fileExists(file) then
+        local f=io.open(file,"w")
+        f:close()
+    end
     if not data then return nil end
     local f = io.open(file,"r+b")
     if not f then return nil end
@@ -457,6 +546,42 @@ function tileToImage(tileData, fileName)
     image:png(fileName)
 end
 
+function tileToImage2(tileMap, fileName)
+    local tm=patcher.tileMap[tileMap]
+    h=256
+    w=256
+    local image=gd.createTrueColor(w,h)
+    local colors={}
+    for i=0,3 do
+        --print(string.format("%02x %02x %02x",table.unpack(nesPalette[colors[i]])))
+        colors[i]=image:colorAllocate(table.unpack(patcher.palette[patcher.colors[i]]))
+    end
+    local xo=0
+    local yo=0
+    
+    local tileData = ""
+    for i=1,#tm do
+        local address = tm[i].address + tm[i].tileNum*16
+        local len = 16
+        tileData = patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+len)
+        --printf("address=%08x tileData=%s",address, bin2hex(tileData))
+        --tm[#tm+1]={address=address, tileNum=tileNum, x=x,y=y}
+        for y = 0, 7 do
+            local byte = string.byte(tileData:sub(y+1,y+1))
+            local byte2 = string.byte(tileData:sub(y+9,y+9))
+            for x=0, 7 do
+                local c=0
+                if bit.isSet(byte,7-x)==true then c=c+1 end
+                if bit.isSet(byte2,7-x)==true then c=c+2 end
+                xo=tm[i].x*8
+                yo=tm[i].y*8
+                image:setPixel(x+xo,y+yo,colors[c])
+            end
+        end
+    end
+    image:png(fileName)
+end
+
 if arg[1]=="-commands" then
     print(patcher.help.info)
     print(patcher.help.description)
@@ -488,7 +613,7 @@ end
 printVerbose(string.format("file: %s",file))
 
 file_dumptext = nil
-filedata=getfilecontents(file)
+patcher.fileData = getfilecontents(file)
 
 local patchfile
 if not patcher.interactive==true then
@@ -497,6 +622,7 @@ if not patcher.interactive==true then
 end
 local breakLoop = false
 while true do
+    local writeToFile = util.writeToFile
     local line
     if patcher.interactive==true then
         io.write(patcher.prompt)
@@ -505,25 +631,33 @@ while true do
         line = patchfile:read("*l")
     end
     if line == nil then break end
-    lineOld=line
-    line = trim(line)
+    line = util.ltrim(line)
     local status, err = pcall(function()
+    
+    local keyword,data = unpack(util.split(line," ",1))
+    keyword=keyword:lower()
     
     if startsWith(line, '#') then
         print(string.sub(line,1))
     elseif startsWith(line, '//') then
         -- comment
-    elseif startsWith(line, "help") then
+    elseif startsWith(line, "verbose off") then
+        patcher.verbose = false
+        print("verbose off")
+    elseif startsWith(line, "verbose on") or line == "verbose" then
+        patcher.verbose = true
+        print("verbose on")
+    elseif keyword == "help" then
         print(patcher.help.interactive)
-    elseif startsWith(line, "commands") then
+    elseif keyword == "commands" then
         print(patcher.help.commands)
-    elseif startsWith(line, 'find hex ') then
+    elseif startsWith(line:lower(), 'find hex ') then
         local data=string.sub(line,10)
         address=0
         print(string.format("Find hex: %s",data))
         for i=1,50 do
             --address = filedata:find(hex2bin(data),address+1+patcher.offset, true)
-            address = filedata:find(hex2bin(data),address+1+patcher.offset, true)
+            address = patcher.fileData:find(hex2bin(data),address+1+patcher.offset, true)
             if address then
                 if address>patcher.startAddress+patcher.offset then
                     print(string.format("    %s Found at 0x%08x",data,address-1-patcher.offset))
@@ -532,7 +666,7 @@ while true do
                 break
             end
         end
-    elseif startsWith(line, 'get hex ') then
+    elseif startsWith(line:lower(), 'get hex ') then
         local data=string.sub(line,9)
 
         local address = data:sub(1,(data:find(' ')))
@@ -541,16 +675,20 @@ while true do
         local len = data:sub((data:find(' ')+1))
         len = tonumber(len, 16)
 
-        local old=filedata:sub(address+1+patcher.offset,address+patcher.offset+len)
+        local old=patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+len)
         old=bin2hex(old)
         
         print(string.format("Hex data at 0x%08x: %s",address, old))
-    elseif startsWith(line, 'find text') then
+    elseif startsWith(line, 'testtext ') then
+        local txt=string.sub(line,10)
+        print(bin2hex(mapText(txt)))
+        print(string.format("[%s] = [%s]",txt,bin2hex(mapText(txt))))
+    elseif startsWith(line, 'find text ') then
         local txt=string.sub(line,11)
         address=0
         print(string.format("Find text: %s",txt))
         for i=1,10 do
-            address = filedata:find(mapText(txt),address+1+patcher.offset)
+            address = patcher.fileData:find(mapText(txt),address+1+patcher.offset)
             if address then
                 if address>patcher.startAddress+patcher.offset then
                     print(string.format("    %s Found at 0x%08x",txt,address-1-patcher.offset))
@@ -562,8 +700,15 @@ while true do
                 break
             end
         end
-    elseif startsWith(line, 'fontdata ') then
+    elseif keyword == 'fontdata' then
         --local font = {"33":[0,0,0,0,0,8,8,8,8,8,0,8,0,0,0,0],"34":[0,0,0,0,0,20,20,0,0,0,0,0,0,0,0,0],"35":[0,0,0,0,0,0,40,124,40,40,124,40,0,0,0,0],"36":[0,0,0,0,16,56,84,20,56,80,84,56,16,0,0,0],"37":[0,0,0,0,0,264,148,72,32,144,328,132,0,0,0,0],"38":[0,0,0,0,0,48,72,48,168,68,196,312,0,0,0,0],"39":[0,0,0,0,0,8,8,0,0,0,0,0,0,0,0,0],"40":[0,0,0,0,0,8,4,4,4,4,4,8,0,0,0,0],"41":[0,0,0,0,0,4,8,8,8,8,8,4,0,0,0,0],"42":[0,0,0,0,32,168,112,428,112,168,32,0,0,0,0,0],"43":[0,0,0,0,0,0,16,16,124,16,16,0,0,0,0,0],"44":[0,0,0,0,0,0,0,0,0,0,24,24,16,8,0,0],"45":[0,0,0,0,0,0,0,0,60,0,0,0,0,0,0,0],"46":[0,0,0,0,0,0,0,0,0,0,24,24,0,0,0,0],"47":[0,0,0,0,0,16,16,8,8,8,4,4,0,0,0,0],"48":[0,0,0,0,0,24,36,36,36,36,36,24,0,0,0,0],"49":[0,0,0,0,0,8,8,8,8,8,8,8,0,0,0,0],"50":[0,0,0,0,0,24,36,32,16,8,4,60,0,0,0,0],"51":[0,0,0,0,0,24,36,32,24,32,36,24,0,0,0,0],"52":[0,0,0,0,0,32,36,36,60,32,32,32,0,0,0,0],"53":[0,0,0,0,0,60,4,4,24,32,36,24,0,0,0,0],"54":[0,0,0,0,0,24,36,4,28,36,36,24,0,0,0,0],"55":[0,0,0,0,0,60,32,32,16,8,8,8,0,0,0,0],"56":[0,0,0,0,0,24,36,36,24,36,36,24,0,0,0,0],"57":[0,0,0,0,0,24,36,36,56,32,36,24,0,0,0,0],"58":[0,0,0,0,0,0,24,24,0,0,24,24,0,0,0,0],"59":[0,0,0,0,0,0,24,24,0,0,24,24,16,8,0,0],"60":[0,0,0,0,0,32,16,8,4,8,16,32,0,0,0,0],"61":[0,0,0,0,0,0,0,60,0,0,60,0,0,0,0,0],"62":[0,0,0,0,0,4,8,16,32,16,8,4,0,0,0,0],"63":[0,0,0,0,0,24,36,32,16,8,0,8,0,0,0,0],"64":[0,0,0,0,240,264,612,660,660,484,8,240,0,0,0,0],"65":[0,0,0,0,0,24,36,36,60,36,36,36,0,0,0,0],"66":[0,0,0,0,0,28,36,36,28,36,36,28,0,0,0,0],"67":[0,0,0,0,0,24,36,4,4,4,36,24,0,0,0,0],"68":[0,0,0,0,0,28,36,36,36,36,36,28,0,0,0,0],"69":[0,0,0,0,0,60,4,4,28,4,4,60,0,0,0,0],"70":[0,0,0,0,0,60,4,4,28,4,4,4,0,0,0,0],"71":[0,0,0,0,0,24,36,4,52,36,36,24,0,0,0,0],"72":[0,0,0,0,0,36,36,36,60,36,36,36,0,0,0,0],"73":[0,0,0,0,0,28,8,8,8,8,8,28,0,0,0,0],"74":[0,0,0,0,0,60,16,16,16,20,20,8,0,0,0,0],"75":[0,0,0,0,0,36,36,20,12,20,36,36,0,0,0,0],"76":[0,0,0,0,0,4,4,4,4,4,4,60,0,0,0,0],"77":[0,0,0,0,0,68,68,108,84,84,68,68,0,0,0,0],"78":[0,0,0,0,0,68,76,84,84,84,100,68,0,0,0,0],"79":[0,0,0,0,0,24,36,36,36,36,36,24,0,0,0,0],"80":[0,0,0,0,0,28,36,36,28,4,4,4,0,0,0,0],"81":[0,0,0,0,0,24,36,36,36,52,36,88,0,0,0,0],"82":[0,0,0,0,0,28,36,36,28,36,36,36,0,0,0,0],"83":[0,0,0,0,0,24,36,4,24,32,36,24,0,0,0,0],"84":[0,0,0,0,0,124,16,16,16,16,16,16,0,0,0,0],"85":[0,0,0,0,0,36,36,36,36,36,36,24,0,0,0,0],"86":[0,0,0,0,0,68,68,68,68,40,40,16,0,0,0,0],"87":[0,0,0,0,0,84,84,84,84,84,56,40,0,0,0,0],"88":[0,0,0,0,0,68,68,40,16,40,68,68,0,0,0,0],"89":[0,0,0,0,0,68,68,40,16,16,16,16,0,0,0,0],"90":[0,0,0,0,0,60,32,16,16,8,4,60,0,0,0,0],"91":[0,0,0,0,0,28,4,4,4,4,4,28,0,0,0,0],"92":[0,0,0,0,0,4,4,8,8,8,16,16,0,0,0,0],"93":[0,0,0,0,0,28,16,16,16,16,16,28,0,0,0,0],"94":[0,0,0,0,0,24,36,0,0,0,0,0,0,0,0,0],"95":[0,0,0,0,0,0,0,0,0,0,0,0,508,0,0,0],"96":[0,0,0,0,0,4,8,0,0,0,0,0,0,0,0,0],"97":[0,0,0,0,0,0,0,24,32,56,36,88,0,0,0,0],"98":[0,0,0,0,0,0,4,4,28,36,36,28,0,0,0,0],"99":[0,0,0,0,0,0,0,0,24,4,4,24,0,0,0,0],"100":[0,0,0,0,0,0,32,32,56,36,36,88,0,0,0,0],"101":[0,0,0,0,0,0,0,24,36,28,4,56,0,0,0,0],"102":[0,0,0,0,0,0,48,8,8,28,8,8,0,0,0,0],"103":[0,0,0,0,0,0,0,0,88,36,36,56,32,36,24,0],"104":[0,0,0,0,0,0,4,4,4,28,36,36,0,0,0,0],"105":[0,0,0,0,0,0,8,0,12,8,8,8,0,0,0,0],"106":[0,0,0,0,0,0,0,16,0,24,16,16,16,12,0,0],"107":[0,0,0,0,0,0,0,4,20,12,20,20,0,0,0,0],"108":[0,0,0,0,0,0,4,4,4,4,4,8,0,0,0,0],"109":[0,0,0,0,0,0,0,0,4,88,168,168,0,0,0,0],"110":[0,0,0,0,0,0,0,0,4,28,36,36,0,0,0,0],"111":[0,0,0,0,0,0,0,0,24,36,36,24,0,0,0,0],"112":[0,0,0,0,0,0,0,4,56,72,72,56,8,8,8,0],"113":[0,0,0,0,0,0,0,0,88,36,36,56,32,32,64,0],"114":[0,0,0,0,0,0,0,0,52,72,8,8,0,0,0,0],"115":[0,0,0,0,0,0,0,24,4,24,32,24,0,0,0,0],"116":[0,0,0,0,0,0,8,8,28,8,8,16,0,0,0,0],"117":[0,0,0,0,0,0,0,0,36,36,36,88,0,0,0,0],"118":[0,0,0,0,0,0,0,0,68,68,40,16,0,0,0,0],"119":[0,0,0,0,0,0,0,0,84,84,84,40,0,0,0,0],"120":[0,0,0,0,0,0,0,0,36,24,24,36,0,0,0,0],"121":[0,0,0,0,0,0,0,0,36,36,36,56,32,36,24,0],"122":[0,0,0,0,0,0,0,0,60,16,8,60,0,0,0,0],"123":[0,0,0,16,8,8,8,4,8,8,8,16,0,0,0,0],"124":[0,0,0,8,8,8,8,8,8,8,8,8,0,0,0,0],"125":[0,0,0,4,8,8,8,16,8,8,8,4,0,0,0,0],"126":[0,0,0,0,0,0,0,24,292,192,0,0,0,0,0,0],"161":[0,0,0,0,0,8,0,8,8,8,8,8,0,0,0,0],"162":[0,0,0,0,0,0,16,56,20,20,56,16,0,0,0,0],"163":[0,0,0,0,0,48,8,8,28,8,8,60,0,0,0,0],"164":[0,0,0,0,0,0,132,120,72,72,120,132,0,0,0,0],"165":[0,0,0,0,68,40,16,56,16,56,16,16,0,0,0,0],"166":[0,0,0,8,8,8,8,0,8,8,8,8,0,0,0,0],"167":[0,0,0,0,0,0,48,72,8,48,72,72,48,64,72,48],"168":[0,0,0,0,0,108,108,0,0,0,0,0,0,0,0,0],"169":[0,0,0,0,240,264,612,532,532,612,264,240,0,0,0,0],"8364":[0,0,0,0,0,112,8,60,8,60,8,112,0,0,0,0],"name":"SlightlyFancyPix","copy":"SpiderDave","letterspace":"64","basefont_size":"512","basefont_left":"62","basefont_top":"0","basefont":"Arial","basefont2":""}
+    elseif startsWith(line, 'export map ') then
+        if not gd then
+            quit("Error: could not use export command because gd did not load.")
+        end
+        local dummy, dummy, tileMap, fileName=unpack(util.split(line," ",3))
+        printf("exporting tile map %s to %s",tileMap, fileName)
+        tileToImage2(tileMap, fileName)
     elseif startsWith(line, 'export ') then
         if not gd then
             quit("Error: could not use export command because gd did not load.")
@@ -572,14 +717,14 @@ while true do
         address=tonumber(address,16)
         len=tonumber(len,16)*16
         
-        --local old=filedata:sub(address+1+patcher.offset,address+patcher.offset+len)
-        tileData = filedata:sub(address+1+patcher.offset,address+patcher.offset+len)
+        --local old=patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+len)
+        tileData = patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+len)
         --old=bin2hex(old)
         
         --print(string.format("Hex data at 0x%08x: %s",address, old))
         print(string.format("exporting tile data at 0x%08x",address))
+        printVerbose(bin2hex(tileData))
         tileToImage(tileData, fileName)
-        
     elseif startsWith(line, 'import ') then
         if not gd then
             quit("Error: could not use import command because gd did not load.")
@@ -588,17 +733,47 @@ while true do
         address=tonumber(address,16)
         len=tonumber(len,16)*16
         
-        --local old=filedata:sub(address+1+patcher.offset,address+patcher.offset+len)
-        --tileData = filedata:sub(address+1+patcher.offset,address+patcher.offset+len)
+        --local old=patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+len)
+        --tileData = patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+len)
         --old=bin2hex(old)
         
         --print(string.format("Hex data at 0x%08x: %s",address, old))
         print(string.format("importing tile at 0x%08x",address))
         local tileData = imageToTile(len, fileName)
+        
         if not writeToFile(file, address+patcher.offset,tileData) then quit("Error: Could not write to file.") end
-    elseif startsWith(line, 'text ') then
-        line=lineOld
-        local data=string.sub(line,6)
+    elseif startsWith(line, 'start tilemap ') then
+        local n = string.sub(line,15)
+        local tm={}
+        local address = 0
+        while true do
+            line = util.trim(patchfile:read("*l"))
+            if startsWith(line, "end") then break end
+            if line:find("=") then
+                local k,v=unpack(util.split(line, "="))
+                k=util.trim(k)
+                v=util.trim(v)
+                if k == "address" then
+                    --printf("%s=%s",k,v)
+                    address = tonumber(v,16)
+                end
+            else
+                local tileNum, x, y = unpack(util.split(line," ",3))
+                tileNum = tonumber(tileNum,16)
+                x = tonumber(x,16)
+                y = tonumber(y,16)
+                tm[#tm+1]={address=address, tileNum=tileNum, x=x,y=y}
+                --printf("%s: %s, %s", tileNum, x, y)
+            end
+        end
+        patcher.tileMap[n] = tm
+    elseif keyword == 'eval' then
+        local f=util.sandbox:loadCode('return '..data)
+        print(f())
+    elseif keyword == 'code' then
+        local f=util.sandbox:loadCode(data)
+        f()
+    elseif keyword == 'text' then
         local address = data:sub(1,(data:find(' ')))
         address = tonumber(address, 16)
         txt=data:sub((data:find(' ')+1))
@@ -608,8 +783,7 @@ while true do
         txt=mapText(txt)
         
         if not writeToFile(file, address+patcher.offset,txt) then quit("Error: Could not write to file.") end
-    elseif startsWith(line, 'textmap ') then
-        local data=string.sub(line,9)
+    elseif keyword == 'textmap' then
         local mapOld = data:sub(1,(data:find(' ')-1))
         local mapNew = data:sub((data:find(' ')+1))
         textMap=textMap or {}
@@ -621,17 +795,17 @@ while true do
                 textMap[mapOld:sub(i,i)]=mapNew:sub(i,i)
             end
         end
-    elseif startsWith(line, 'hex ') then
-        local data=string.sub(line,5)
+    elseif keyword == 'hex' then
         local address = data:sub(1,(data:find(' ')))
         address = tonumber(address, 16)
         txt=data:sub((data:find(' ')+1))
-        old=filedata:sub(address+1+patcher.offset,address+patcher.offset+#txt/2)
+        txt = util.stripSpaces(txt)
+        
+        old=patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+#txt/2)
         old=bin2hex(old)
         print(string.format("Setting hex bytes: 0x%08x: %s --> %s",address,old, txt))
         if not writeToFile(file, address+patcher.offset,hex2bin(txt)) then quit("Error: Could not write to file.") end
-    elseif startsWith(line, 'gg ') then
-        local data=string.sub(line,4)
+    elseif keyword == 'gg' then
         local gg=data:upper()
         -- Used to map the GG characters to binary
         local ggMap={
@@ -683,7 +857,7 @@ while true do
         address = tonumber(address, 16)
         address2 = tonumber(address2, 16)
         l = tonumber(l, 16)
-        data = filedata:sub(address+1+patcher.offset,address+1+patcher.offset+l-1)
+        data = patcher.fileData:sub(address+1+patcher.offset,address+1+patcher.offset+l-1)
         print(string.format("Copying 0x%08x bytes from 0x%08x to 0x%08x",l, address, address2))
         if not writeToFile(file, address2+patcher.offset,data) then quit("Error: Could not write to file.") end
     elseif line=="break" or line == "quit" or line == "exit" then
@@ -691,18 +865,27 @@ while true do
         --break
         breakLoop=true
     elseif line=="refresh" then
-        filedata=getfilecontents(file)
-    elseif startsWith(line, 'start ') then
-        local data=string.sub(line,7)
+        patcher.fileData=getfilecontents(file)
+    elseif keyword == 'start' then
         patcher.startAddress = tonumber(data, 16)
         print("Setting Start Address: "..data)
-    elseif startsWith(line, 'offset ') then
-        local data=string.sub(line,8)
+    elseif keyword == 'offset' then
         patcher.offset = tonumber(data, 16)
         print("Setting offset: "..data)
-    elseif startsWith(line, 'palette ') then
-        local data=string.sub(line,9)
-        if #data==8 then
+    elseif keyword == 'palette' then
+        if startsWith(data, 'file') then
+            local fileName = util.split(data, " ", 1)[2]
+            local fileData = getfilecontents(fileName)
+            
+            patcher.palette = {}
+            i=1
+            for c=0,63 do
+                patcher.palette[c]={}
+                for i=1,3 do
+                    patcher.palette[c][i]=rawToNumber(fileData:sub(c*3+i,c*3+i))
+                end
+            end
+        elseif #data==8 then
             for i=0,3 do
                 patcher.colors[i]=tonumber(string.sub(data,i*2+1,i*2+2),16)
                 --print(patcher.colors[i])
@@ -710,15 +893,20 @@ while true do
         else
             quit("Error: bad palette string length")
         end
-    elseif startsWith(line, 'palette file ') then
-        local fileName=string.sub(line,14)
-        local data = getfilecontents(fileName)
-        patcher.palette = {}
-        i=1
-        for c=0,63 do
-            patcher.palette[c]={}
-            for i=1,3 do
-                patcher.palette[c][i]=rawToNumber(data:sub(c*3+i,c*3+i))
+    elseif keyword == 'diff' then
+        local diff={}
+        diff.fileName = data
+        diff.data = getfilecontents(diff.fileName)
+        diff.count=0
+        printf("file1: %s bytes",#patcher.fileData)
+        printf("file2: %s bytes",#diff.data)
+        for i = 0,#patcher.fileData do
+            diff.old =string.byte(patcher.fileData:sub(i+1,i+1))
+            diff.new =string.byte(diff.data:sub(i+1,i+1))
+            if diff.old~=diff.new then
+                printf("%02x %06x  %02x | %02x",diff.count, i, diff.old,diff.new)
+                diff.count=diff.count+1
+                if diff.count>100 then break end
             end
         end
     elseif startsWith(line, 'ips ') then
@@ -769,9 +957,7 @@ while true do
                 ips.address=ips.address+ips.chunkSize
             end
             printVerbose(string.format("replacing 0x%08x bytes at 0x%08x", #ips.replaceData, ips.offset))
-            
-            print(string.format("replacing: 0x%08x %s", ips.offset, bin2hex(ips.replaceData)))
-            
+            printVerbose(string.format("replacing: 0x%08x %s", ips.offset, bin2hex(ips.replaceData)))
             printVerbose(string.format("0x%08x",ips.address))
             
             if not writeToFile(file, ips.offset+patcher.offset,ips.replaceData) then quit("Error: Could not write to file.") end
@@ -783,8 +969,17 @@ while true do
         end
         print("ips done.")
         
---        old=filedata:sub(address+1+patcher.offset,address+patcher.offset+#txt/2)
+--        old=patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+#txt/2)
 --        old=bin2hex(old)
+    elseif keyword == 'readme' then
+        if not (data == 'update') then
+            quit("Error: bad or missing readme parameter.")
+        end
+        if (writeToFile("README.md",0,'```\n'..patcher.help.info ..'\n'.. patcher.help.description ..'\n'.. patcher.help.commands..'\n```')) then
+            print('README updated')
+        else
+            print('README update failed')
+        end
     elseif line == "" then
     else
         if patcher.interactive then
