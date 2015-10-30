@@ -15,7 +15,12 @@ end
 
 --local winapi = require("winapi")
 
+
 local util={}
+
+function startsWith(haystack, needle)
+  return string.sub(haystack, 1, string.len(needle)) == needle
+end
 
 --local condition = load_code("return " .. args.condition, context)
 
@@ -29,6 +34,211 @@ util.stripSpaces = function(s)
 end
 
 printf = util.printf
+
+
+local asm={}
+
+--      +---------------------+--------------------------+
+--      |      mode           |     assembler format     |
+--      +=====================+==========================+
+--      | Immediate           |          #aa             |
+--      | Absolute            |          aaaa            |
+--      | Zero Page           |          aa              |   Note:
+--      | Implied             |                          |
+--      | Indirect Absolute   |          (aaaa)          |     aa = 2 hex digits
+--      | Absolute Indexed,X  |          aaaa,X          |          as $FF
+--      | Absolute Indexed,Y  |          aaaa,Y          |
+--      | Zero Page Indexed,X |          aa,X            |     aaaa = 4 hex
+--      | Zero Page Indexed,Y |          aa,Y            |          digits as
+--      | Indexed Indirect    |          (aa,X)          |          $FFFF
+--      | Indirect Indexed    |          (aa),Y          |
+--      | Relative            |          aaaa            |     Can also be
+--      | Accumulator         |          A               |     assembler labels
+--      +---------------------+--------------------------+
+      
+
+--immediate: 2 bytes
+--zeroPage: 2 bytes
+--zeroPageX: 2 bytes
+--absolute: 3 bytes
+--absoluteX: 3 bytes
+--absoluteY: 3 bytes
+--indirect: 3 bytes (only used by jmp)
+--indirectx: 2 bytes
+--indirecty: 2 bytes
+--accumulator: 1 byte
+
+--http://e-tradition.net/bytes/6502/6502_instruction_set.html
+
+-- #       immediate
+-- a       absolute
+-- r       relative
+-- zp      zero page
+-- ()      indirect
+-- i       implied
+-- A       accumulator
+-- x       x register
+-- y       y register
+
+asm.set={
+    [0x00]={opcode="brk", mode="i", length=1},
+    [0x01]={opcode="ora", mode="(zp,x)", length=2},
+    [0x05]={opcode="ora", mode="zp", length=2},
+    [0x06]={opcode="asl", mode="zp", length=2},
+    [0x08]={opcode="php", mode="i", length=1},
+    [0x09]={opcode="ora", mode="#", length=2},
+    [0x0a]={opcode="asl", mode="A", length=1},
+    [0x0d]={opcode="ora", mode="a", length=3},
+    [0x0e]={opcode="asl", mode="a", length=3},
+    [0x10]={opcode="bpl", mode="r", length=2},
+    [0x11]={opcode="ora", mode="(zp),y", length=2},
+    [0x14]={opcode="jsr", mode="a", length=3},
+    [0x15]={opcode="ora", mode="zp,x", length=2},
+    [0x16]={opcode="asl", mode="zp,x", length=2},
+    [0x18]={opcode="clc", mode="i", length=1},
+    [0x19]={opcode="ora", mode="a,y", length=3},
+    [0x1d]={opcode="ora", mode="a,x", length=3},
+    [0x1e]={opcode="asl", mode="a,x", length=3},
+    [0x21]={opcode="and", mode="(zp,x)", length=2},
+    [0x24]={opcode="bit", mode="zp", length=2},
+    [0x25]={opcode="and", mode="zp", length=2},
+    [0x26]={opcode="rol", mode="zp", length=2},
+    [0x28]={opcode="rti", mode="i", length=1},
+    [0x29]={opcode="and", mode="#", length=2},
+    [0x2a]={opcode="rol", mode="A", length=1},
+    [0x2c]={opcode="bit", mode="a", length=3},
+    [0x2d]={opcode="and", mode="a", length=3},
+    [0x2e]={opcode="rol", mode="a", length=3},
+    [0x30]={opcode="bmi", mode="r", length=2},
+    [0x31]={opcode="and", mode="(zp),y", length=2},
+    [0x35]={opcode="and", mode="zp,x", length=2},
+    [0x36]={opcode="rol", mode="zp,x", length=2},
+    [0x38]={opcode="sec", mode="i", length=1},
+    [0x39]={opcode="and", mode="a,y", length=3},
+    [0x3c]={opcode="rts", mode="i", length=1},
+    [0x3d]={opcode="and", mode="a,x", length=3},
+    [0x3e]={opcode="rol", mode="a,x", length=3},
+    [0x41]={opcode="eor", mode="(zp,x)", length=2},
+    [0x45]={opcode="eor", mode="zp", length=2},
+    [0x46]={opcode="lsr", mode="zp", length=2},
+    [0x48]={opcode="pha", mode="i", length=1},
+    [0x49]={opcode="eor", mode="#", length=2},
+    [0x4a]={opcode="lsr", mode="A", length=1},
+    [0x4c]={opcode="jmp", mode="a", length=3},
+    [0x4d]={opcode="eor", mode="a", length=3},
+    [0x4e]={opcode="lsr", mode="a", length=3},
+    [0x50]={opcode="bvc", mode="r", length=2},
+    [0x51]={opcode="eor", mode="(zp),y", length=2},
+    [0x55]={opcode="eor", mode="zp,x", length=2},
+    [0x56]={opcode="lsr", mode="zp,x", length=2},
+    [0x58]={opcode="cli", mode="i", length=1},
+    [0x59]={opcode="eor", mode="a,y", length=3},
+    [0x5d]={opcode="eor", mode="a,x", length=3},
+    [0x5e]={opcode="lsr", mode="a,x", length=3},
+    [0x61]={opcode="adc", mode="(zp,x)", length=2},
+    [0x65]={opcode="adc", mode="zp", length=2},
+    [0x66]={opcode="ror", mode="zp", length=2},
+    [0x68]={opcode="pla", mode="i", length=1},
+    [0x69]={opcode="adc", mode="#", length=2},
+    [0x6a]={opcode="ror", mode="A", length=1},
+    [0x6c]={opcode="jmp", mode="(a)", length=3},
+    [0x6d]={opcode="adc", mode="a", length=3},
+    [0x6e]={opcode="ror", mode="a", length=3},
+    [0x70]={opcode="bvs", mode="r", length=2},
+    [0x71]={opcode="adc", mode="(zp),y", length=2},
+    [0x75]={opcode="adc", mode="zp,x", length=2},
+    [0x76]={opcode="ror", mode="zp,x", length=2},
+    [0x78]={opcode="sei", mode="i", length=1},
+    [0x79]={opcode="adc", mode="a,y", length=3},
+    [0x7d]={opcode="adc", mode="a,x", length=3},
+    [0x7e]={opcode="ror", mode="a,x", length=3},
+    [0x81]={opcode="sta", mode="(zp,x)", length=2},
+    [0x84]={opcode="sty", mode="zp", length=2},
+    [0x85]={opcode="sta", mode="zp", length=2},
+    [0x86]={opcode="stx", mode="zp", length=2},
+    [0x88]={opcode="dey", mode="i", length=1},
+    [0x8a]={opcode="txa", mode="i", length=1},
+    [0x8c]={opcode="sty", mode="a", length=3},
+    [0x8d]={opcode="sta", mode="a", length=3},
+    [0x8e]={opcode="stx", mode="a", length=3},
+    [0x90]={opcode="bcc", mode="r", length=2},
+    [0x91]={opcode="sta", mode="(zp),y", length=2},
+    [0x94]={opcode="sty", mode="zp,x", length=2},
+    [0x95]={opcode="sta", mode="zp,x", length=2},
+    [0x96]={opcode="stx", mode="zp,y", length=2},
+    [0x98]={opcode="tya", mode="i", length=1},
+    [0x99]={opcode="sta", mode="a,y", length=3},
+    [0x9a]={opcode="txs", mode="i", length=1},
+    [0x9d]={opcode="sta", mode="a,x", length=3},
+    [0xa0]={opcode="ldy", mode="#", length=2},
+    [0xa1]={opcode="lda", mode="(zp,x)", length=2},
+    [0xa2]={opcode="ldx", mode="#", length=2},
+    [0xa4]={opcode="ldy", mode="zp", length=2},
+    [0xa5]={opcode="lda", mode="zp", length=2},
+    [0xa6]={opcode="ldx", mode="zp", length=2},
+    [0xa8]={opcode="tay", mode="i", length=1},
+    [0xa9]={opcode="lda", mode="#", length=2},
+    [0xaa]={opcode="tax", mode="i", length=1},
+    [0xac]={opcode="ldy", mode="a", length=3},
+    [0xad]={opcode="lda", mode="a", length=3},
+    [0xae]={opcode="ldx", mode="a", length=3},
+    [0xb0]={opcode="bcs", mode="r", length=2},
+    [0xb1]={opcode="lda", mode="(zp),y", length=2},
+    [0xb4]={opcode="ldy", mode="zp,x", length=2},
+    [0xb5]={opcode="lda", mode="zp,x", length=2},
+    [0xb6]={opcode="ldx", mode="zp,y", length=2},
+    [0xb8]={opcode="clv", mode="i", length=1},
+    [0xb9]={opcode="lda", mode="a,y", length=3},
+    [0xba]={opcode="tsx", mode="i", length=1},
+    [0xbc]={opcode="ldy", mode="a,x", length=3},
+    [0xbd]={opcode="lda", mode="a,x", length=3},
+    [0xbe]={opcode="ldx", mode="a,y", length=3},
+    [0xc0]={opcode="cpy", mode="#", length=2},
+    [0xc1]={opcode="cmp", mode="(zp,x)", length=2},
+    [0xc4]={opcode="cpy", mode="zp", length=2},
+    [0xc5]={opcode="cmp", mode="zp", length=2},
+    [0xc6]={opcode="dec", mode="zp", length=2},
+    [0xc9]={opcode="cmp", mode="#", length=2},
+    [0xca]={opcode="dex", mode="i", length=1},
+    [0xcc]={opcode="cpy", mode="a", length=3},
+    [0xcd]={opcode="cmp", mode="a", length=3},
+    [0xce]={opcode="dec", mode="a", length=3},
+    [0xd0]={opcode="bne", mode="r", length=2},
+    [0xd1]={opcode="cmp", mode="(zp),y", length=2},
+    [0xd5]={opcode="cmp", mode="zp,x", length=2},
+    [0xd6]={opcode="dec", mode="zp,x", length=2},
+    [0xd8]={opcode="cld", mode="i", length=1},
+    [0xd9]={opcode="cmp", mode="a,y", length=3},
+    [0xdd]={opcode="cmp", mode="a,x", length=3},
+    [0xde]={opcode="dec", mode="a,x", length=3},
+    [0xe0]={opcode="cpx", mode="#", length=2},
+    [0xe1]={opcode="sbc", mode="(zp,x)", length=2},
+    [0xe4]={opcode="cpx", mode="zp", length=2},
+    [0xe5]={opcode="sbc", mode="zp", length=2},
+    [0xe6]={opcode="inc", mode="zp", length=2},
+    [0xe9]={opcode="sbc", mode="#", length=2},
+    [0xea]={opcode="nop", mode="i", length=1},
+    [0xec]={opcode="cpx", mode="a", length=3},
+    [0xed]={opcode="sbc", mode="a", length=3},
+    [0xee]={opcode="inc", mode="a", length=3},
+    [0xf0]={opcode="beq", mode="r", length=2},
+    [0xf1]={opcode="sbc", mode="(zp),y", length=2},
+    [0xf5]={opcode="sbc", mode="zp,x", length=2},
+    [0xf6]={opcode="inc", mode="zp,x", length=2},
+    [0xf8]={opcode="sed", mode="i", length=1},
+    [0xf9]={opcode="sbc", mode="a,y", length=3},
+    [0xfd]={opcode="sbc", mode="a,x", length=3},
+    [0xfe]={opcode="inc", mode="a,x", length=2},
+}
+
+--print("#  l  op  mode")
+--for i=0,255 do
+--    if asm.set[i] then
+--        local o=asm.set[i]
+--        printf("%02x %02x %s %s",i,o.length or -1, o.opcode,o.mode)
+        --printf('[0x%02x]={opcode="%s", mode="%s", length=%1x},',i,o.opcode,o.mode,o.length)
+--    end
+--end
 
 function util.split(s, delim, max)
   assert (type (delim) == "string" and string.len (delim) > 0,
@@ -57,7 +267,7 @@ end
 local patcher = {
     info = {
         name = "DavePatcher",
-        version = "0.5.3",
+        version = "0.5.5",
         released = "2015",
         author = "SpiderDave",
         url = 'https://github.com/SpiderDave/DavePatcher'
@@ -182,7 +392,37 @@ of multiple words.  Possible keywords:
         import tile data from png using current palette as a reference.
         Example:
             import 20010 100 tiles.png
+            
+    start tilemap <name>
+    ...
+    end
+        Define a tile map to be used with the export map command.
+        Example:
+            start tilemap batman
+            address = 2c000
+            81 1 0
+            82 2 0
+            90 0 1
+            91 1 1
+            92 2 1
+            a0 0 2
+            a1 1 2
+            a2 2 2
+            b0 0 3
+            b1 1 3
+            b2 2 3
+            end
 
+    export map <tilemap> <file>
+        export tile data to png file using a tile map.
+        Example:
+            export map batman batman_sprite_test.png
+    
+    import map
+        import tile data from png file using a tile map
+        Example:
+            import map batman batman_sprite_test.png
+    
     gg <gg code>
         WIP
         decode a NES Game Genie code (does not apply it)
@@ -335,10 +575,6 @@ function util.rtrim(s)
   return s:sub(1, n)
 end
 
-function startsWith(haystack, needle)
-  return string.sub(haystack, 1, string.len(needle)) == needle
-end
-
 function getfilecontents(path)
     local file = io.open(path,"rb")
     if file==nil then return nil end
@@ -415,10 +651,28 @@ function makepointer(addr,returnbinary)
     if returnbinary then return pbin else return p end
 end
 
-function mapText(txt)
+function mapText(txt, reverse)
     if not textMap then return txt end
     
     local txtNew=""
+    if reverse==true then
+        for i=1,#txt do
+            local c=txt:sub(i,i)
+            local found=false
+            for k,v in pairs(textMap) do
+                if v==c then
+                    txtNew=txtNew..k
+                    found=true
+                    break
+                end
+            end
+            if found==false then txtNew=txtNew.."?" end
+        end
+        return txtNew
+    end
+    
+    
+    
     for i=1,#txt do
         local c=txt:sub(i,i)
         if textMap[c] then
@@ -513,6 +767,88 @@ function imageToTile(len, fileName)
     return tileData
 end
 
+function imageToTile2(tileMap, fileName)
+    local tm=patcher.tileMap[tileMap]
+    local out = {
+        t={},
+        pos={},
+    }
+    
+    --local nTiles = len/16
+    nTiles=32*32
+    
+    local image = gd.createFromPng(fileName)
+    local h = math.max(8,math.floor(nTiles/16)*8)
+    local w = math.min(16, nTiles)*8
+    h=256
+    w=256
+
+    local colors={}
+    for i=0,3 do
+        --print(string.format("%02x %02x %02x",table.unpack(nesPalette[colors[i]])))
+        colors[i]=image:colorAllocate(table.unpack(patcher.palette[patcher.colors[i]]))
+    end
+    local xo=0
+    local yo=0
+    
+    local pr,pg,pb = table.unpack(patcher.palette[patcher.colors[3]])
+    for t=0,nTiles-1 do
+        out.t[t] = {}
+        for y = 0, 7 do
+            out.t[t][y] = 0
+            out.t[t][y+8] = 0
+            --local byte = string.byte(tileData:sub(t*16+y+1,t*16+y+1))
+            --local byte2 = string.byte(tileData:sub(t*16+y+9,t*16+y+9))
+            for x=0, 7 do
+                local c=0
+                --if bit.isSet(byte,7-x)==true then c=c+1 end
+                --if bit.isSet(byte2,7-x)==true then c=c+2 end
+                local c = image:getPixel(x+xo,y+yo)
+                local r,g,b=image:red(c),image:green(c),image:blue(c)
+                
+                for i=0,3 do
+                    local pr,pg,pb = table.unpack(patcher.palette[patcher.colors[i]])
+                    if string.format("%02x%02x%02x",r,g,b) == string.format("%02x%02x%02x",pr,pg,pb) then
+                        --io.write("*")
+                        --out.t[t][y*8+x]=i % 2
+                        --out.t[t][y*8+x+8]=math.floor(i / 2)
+                        out.t[t][y]=out.t[t][y] + (2^(7-x)) * (i%2)
+                        out.t[t][y+8]=out.t[t][y+8] + (2^(7-x)) * (math.floor(i/2))
+                    end
+                end
+                --print(string.format("%02x (%02x,%02x) %02x%02x%02x  %02x%02x%02x",t, x,y, r,g,b,  pr,pg,pb))
+            end
+        end
+        xo=xo+8
+        if xo>=w then
+            xo=0
+            yo=yo+8
+        end
+    end
+
+    local tileData = ""
+    local tileData = {} --It's an array here, because it's not guaranteed to be a continuous string of data; it can have gaps.
+    
+    -- Iterate the tilemap
+    for i=1,#tm do
+        tileData[i]={}
+        
+        t=tm[i].tileNum
+        local o=""
+        
+        for j=0,#out.t[t] do
+            o=o..string.char(out.t[tm[i].y*w/8+tm[i].x][j])
+        end
+        
+        tileData[i].t = o                           -- the tile data for this tile to be applied
+        tileData[i].address = tm[i].address + t*16  -- the address to apply it to
+        --printf("tileNum=%02x %02x,",t,tileData[i].address)
+        --printf("tilemap index=%02x tileNum=%02x pos=(%02x,%02x) %04x %s",i, t, tm[i].x, tm[i].y, tileData[i].address, bin2hex(tileData[i].t))
+    end
+    
+    return tileData
+end
+
 function tileToImage(tileData, fileName)
     local nTiles = #tileData/16
     
@@ -578,6 +914,7 @@ function tileToImage2(tileMap, fileName)
                 image:setPixel(x+xo,y+yo,colors[c])
             end
         end
+        --printf("tilemap index=%02x tileNum=%02x pos=(%02x,%02x) %02x %s",i,tm[i].tileNum, tm[i].x,tm[i].y,address,bin2hex(tileData))
     end
     image:png(fileName)
 end
@@ -688,7 +1025,7 @@ while true do
         address=0
         print(string.format("Find text: %s",txt))
         for i=1,10 do
-            address = patcher.fileData:find(mapText(txt),address+1+patcher.offset)
+            address = patcher.fileData:find(mapText(txt),address+1+patcher.offset, true)
             if address then
                 if address>patcher.startAddress+patcher.offset then
                     print(string.format("    %s Found at 0x%08x",txt,address-1-patcher.offset))
@@ -700,6 +1037,17 @@ while true do
                 break
             end
         end
+    elseif startsWith(line:lower(), 'get text ') then
+        local data=string.sub(line,10)
+        local address = data:sub(1,(data:find(' ')))
+        address = tonumber(address, 16)
+        local len = data:sub((data:find(' ')+1))
+        len = tonumber(len, 16)
+        
+        local old=patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+len)
+        --old=bin2hex(old)
+        
+        print(string.format("Hex data at 0x%08x: %s",address,mapText(old,true)))
     elseif keyword == 'fontdata' then
         --local font = {"33":[0,0,0,0,0,8,8,8,8,8,0,8,0,0,0,0],"34":[0,0,0,0,0,20,20,0,0,0,0,0,0,0,0,0],"35":[0,0,0,0,0,0,40,124,40,40,124,40,0,0,0,0],"36":[0,0,0,0,16,56,84,20,56,80,84,56,16,0,0,0],"37":[0,0,0,0,0,264,148,72,32,144,328,132,0,0,0,0],"38":[0,0,0,0,0,48,72,48,168,68,196,312,0,0,0,0],"39":[0,0,0,0,0,8,8,0,0,0,0,0,0,0,0,0],"40":[0,0,0,0,0,8,4,4,4,4,4,8,0,0,0,0],"41":[0,0,0,0,0,4,8,8,8,8,8,4,0,0,0,0],"42":[0,0,0,0,32,168,112,428,112,168,32,0,0,0,0,0],"43":[0,0,0,0,0,0,16,16,124,16,16,0,0,0,0,0],"44":[0,0,0,0,0,0,0,0,0,0,24,24,16,8,0,0],"45":[0,0,0,0,0,0,0,0,60,0,0,0,0,0,0,0],"46":[0,0,0,0,0,0,0,0,0,0,24,24,0,0,0,0],"47":[0,0,0,0,0,16,16,8,8,8,4,4,0,0,0,0],"48":[0,0,0,0,0,24,36,36,36,36,36,24,0,0,0,0],"49":[0,0,0,0,0,8,8,8,8,8,8,8,0,0,0,0],"50":[0,0,0,0,0,24,36,32,16,8,4,60,0,0,0,0],"51":[0,0,0,0,0,24,36,32,24,32,36,24,0,0,0,0],"52":[0,0,0,0,0,32,36,36,60,32,32,32,0,0,0,0],"53":[0,0,0,0,0,60,4,4,24,32,36,24,0,0,0,0],"54":[0,0,0,0,0,24,36,4,28,36,36,24,0,0,0,0],"55":[0,0,0,0,0,60,32,32,16,8,8,8,0,0,0,0],"56":[0,0,0,0,0,24,36,36,24,36,36,24,0,0,0,0],"57":[0,0,0,0,0,24,36,36,56,32,36,24,0,0,0,0],"58":[0,0,0,0,0,0,24,24,0,0,24,24,0,0,0,0],"59":[0,0,0,0,0,0,24,24,0,0,24,24,16,8,0,0],"60":[0,0,0,0,0,32,16,8,4,8,16,32,0,0,0,0],"61":[0,0,0,0,0,0,0,60,0,0,60,0,0,0,0,0],"62":[0,0,0,0,0,4,8,16,32,16,8,4,0,0,0,0],"63":[0,0,0,0,0,24,36,32,16,8,0,8,0,0,0,0],"64":[0,0,0,0,240,264,612,660,660,484,8,240,0,0,0,0],"65":[0,0,0,0,0,24,36,36,60,36,36,36,0,0,0,0],"66":[0,0,0,0,0,28,36,36,28,36,36,28,0,0,0,0],"67":[0,0,0,0,0,24,36,4,4,4,36,24,0,0,0,0],"68":[0,0,0,0,0,28,36,36,36,36,36,28,0,0,0,0],"69":[0,0,0,0,0,60,4,4,28,4,4,60,0,0,0,0],"70":[0,0,0,0,0,60,4,4,28,4,4,4,0,0,0,0],"71":[0,0,0,0,0,24,36,4,52,36,36,24,0,0,0,0],"72":[0,0,0,0,0,36,36,36,60,36,36,36,0,0,0,0],"73":[0,0,0,0,0,28,8,8,8,8,8,28,0,0,0,0],"74":[0,0,0,0,0,60,16,16,16,20,20,8,0,0,0,0],"75":[0,0,0,0,0,36,36,20,12,20,36,36,0,0,0,0],"76":[0,0,0,0,0,4,4,4,4,4,4,60,0,0,0,0],"77":[0,0,0,0,0,68,68,108,84,84,68,68,0,0,0,0],"78":[0,0,0,0,0,68,76,84,84,84,100,68,0,0,0,0],"79":[0,0,0,0,0,24,36,36,36,36,36,24,0,0,0,0],"80":[0,0,0,0,0,28,36,36,28,4,4,4,0,0,0,0],"81":[0,0,0,0,0,24,36,36,36,52,36,88,0,0,0,0],"82":[0,0,0,0,0,28,36,36,28,36,36,36,0,0,0,0],"83":[0,0,0,0,0,24,36,4,24,32,36,24,0,0,0,0],"84":[0,0,0,0,0,124,16,16,16,16,16,16,0,0,0,0],"85":[0,0,0,0,0,36,36,36,36,36,36,24,0,0,0,0],"86":[0,0,0,0,0,68,68,68,68,40,40,16,0,0,0,0],"87":[0,0,0,0,0,84,84,84,84,84,56,40,0,0,0,0],"88":[0,0,0,0,0,68,68,40,16,40,68,68,0,0,0,0],"89":[0,0,0,0,0,68,68,40,16,16,16,16,0,0,0,0],"90":[0,0,0,0,0,60,32,16,16,8,4,60,0,0,0,0],"91":[0,0,0,0,0,28,4,4,4,4,4,28,0,0,0,0],"92":[0,0,0,0,0,4,4,8,8,8,16,16,0,0,0,0],"93":[0,0,0,0,0,28,16,16,16,16,16,28,0,0,0,0],"94":[0,0,0,0,0,24,36,0,0,0,0,0,0,0,0,0],"95":[0,0,0,0,0,0,0,0,0,0,0,0,508,0,0,0],"96":[0,0,0,0,0,4,8,0,0,0,0,0,0,0,0,0],"97":[0,0,0,0,0,0,0,24,32,56,36,88,0,0,0,0],"98":[0,0,0,0,0,0,4,4,28,36,36,28,0,0,0,0],"99":[0,0,0,0,0,0,0,0,24,4,4,24,0,0,0,0],"100":[0,0,0,0,0,0,32,32,56,36,36,88,0,0,0,0],"101":[0,0,0,0,0,0,0,24,36,28,4,56,0,0,0,0],"102":[0,0,0,0,0,0,48,8,8,28,8,8,0,0,0,0],"103":[0,0,0,0,0,0,0,0,88,36,36,56,32,36,24,0],"104":[0,0,0,0,0,0,4,4,4,28,36,36,0,0,0,0],"105":[0,0,0,0,0,0,8,0,12,8,8,8,0,0,0,0],"106":[0,0,0,0,0,0,0,16,0,24,16,16,16,12,0,0],"107":[0,0,0,0,0,0,0,4,20,12,20,20,0,0,0,0],"108":[0,0,0,0,0,0,4,4,4,4,4,8,0,0,0,0],"109":[0,0,0,0,0,0,0,0,4,88,168,168,0,0,0,0],"110":[0,0,0,0,0,0,0,0,4,28,36,36,0,0,0,0],"111":[0,0,0,0,0,0,0,0,24,36,36,24,0,0,0,0],"112":[0,0,0,0,0,0,0,4,56,72,72,56,8,8,8,0],"113":[0,0,0,0,0,0,0,0,88,36,36,56,32,32,64,0],"114":[0,0,0,0,0,0,0,0,52,72,8,8,0,0,0,0],"115":[0,0,0,0,0,0,0,24,4,24,32,24,0,0,0,0],"116":[0,0,0,0,0,0,8,8,28,8,8,16,0,0,0,0],"117":[0,0,0,0,0,0,0,0,36,36,36,88,0,0,0,0],"118":[0,0,0,0,0,0,0,0,68,68,40,16,0,0,0,0],"119":[0,0,0,0,0,0,0,0,84,84,84,40,0,0,0,0],"120":[0,0,0,0,0,0,0,0,36,24,24,36,0,0,0,0],"121":[0,0,0,0,0,0,0,0,36,36,36,56,32,36,24,0],"122":[0,0,0,0,0,0,0,0,60,16,8,60,0,0,0,0],"123":[0,0,0,16,8,8,8,4,8,8,8,16,0,0,0,0],"124":[0,0,0,8,8,8,8,8,8,8,8,8,0,0,0,0],"125":[0,0,0,4,8,8,8,16,8,8,8,4,0,0,0,0],"126":[0,0,0,0,0,0,0,24,292,192,0,0,0,0,0,0],"161":[0,0,0,0,0,8,0,8,8,8,8,8,0,0,0,0],"162":[0,0,0,0,0,0,16,56,20,20,56,16,0,0,0,0],"163":[0,0,0,0,0,48,8,8,28,8,8,60,0,0,0,0],"164":[0,0,0,0,0,0,132,120,72,72,120,132,0,0,0,0],"165":[0,0,0,0,68,40,16,56,16,56,16,16,0,0,0,0],"166":[0,0,0,8,8,8,8,0,8,8,8,8,0,0,0,0],"167":[0,0,0,0,0,0,48,72,8,48,72,72,48,64,72,48],"168":[0,0,0,0,0,108,108,0,0,0,0,0,0,0,0,0],"169":[0,0,0,0,240,264,612,532,532,612,264,240,0,0,0,0],"8364":[0,0,0,0,0,112,8,60,8,60,8,112,0,0,0,0],"name":"SlightlyFancyPix","copy":"SpiderDave","letterspace":"64","basefont_size":"512","basefont_left":"62","basefont_top":"0","basefont":"Arial","basefont2":""}
     elseif startsWith(line, 'export map ') then
@@ -717,14 +1065,29 @@ while true do
         address=tonumber(address,16)
         len=tonumber(len,16)*16
         
-        --local old=patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+len)
         tileData = patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+len)
-        --old=bin2hex(old)
         
-        --print(string.format("Hex data at 0x%08x: %s",address, old))
         print(string.format("exporting tile data at 0x%08x",address))
         printVerbose(bin2hex(tileData))
         tileToImage(tileData, fileName)
+    elseif startsWith(line, 'import map ') then
+        if not gd then
+            quit("Error: could not use import command because gd did not load.")
+        end
+        local dummy, dummy, tileMap, fileName=unpack(util.split(line," ",3))
+        --address=tonumber(address,16)
+        --len=tonumber(len,16)*16
+        
+        print(string.format("importing tile map %s",fileName))
+        local tileData = imageToTile2(tileMap, fileName)
+        
+        local address,td
+        for i=1,#tileData do
+            address,td=tileData[i].address, tileData[i].t
+            if not writeToFile(file, address+patcher.offset,td) then quit("Error: Could not write to file.") end
+        end
+        
+        --if not writeToFile(file, address+patcher.offset,tileData) then quit("Error: Could not write to file.") end
     elseif startsWith(line, 'import ') then
         if not gd then
             quit("Error: could not use import command because gd did not load.")
@@ -733,11 +1096,6 @@ while true do
         address=tonumber(address,16)
         len=tonumber(len,16)*16
         
-        --local old=patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+len)
-        --tileData = patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+len)
-        --old=bin2hex(old)
-        
-        --print(string.format("Hex data at 0x%08x: %s",address, old))
         print(string.format("importing tile at 0x%08x",address))
         local tileData = imageToTile(len, fileName)
         
@@ -933,7 +1291,6 @@ while true do
 --            if ips.address+1 > #ips.data+3 then
 --                quit("Error: Early end of file")
 --            end
-            
             --print(#ips.offset)
             ips.offset = rawToNumber(ips.offset)
             printVerbose(string.format("offset: 0x%08x",ips.offset))
@@ -957,11 +1314,9 @@ while true do
                 ips.address=ips.address+ips.chunkSize
             end
             printVerbose(string.format("replacing 0x%08x bytes at 0x%08x", #ips.replaceData, ips.offset))
-            printVerbose(string.format("replacing: 0x%08x %s", ips.offset, bin2hex(ips.replaceData)))
+            --printVerbose(string.format("replacing: 0x%08x %s", ips.offset, bin2hex(ips.replaceData))) -- MAKES IT HANG
             printVerbose(string.format("0x%08x",ips.address))
-            
             if not writeToFile(file, ips.offset+patcher.offset,ips.replaceData) then quit("Error: Could not write to file.") end
-            
             loopCount = loopCount+1
             if loopCount >=loopLimit then
                 quit ("Error: Loop limit reached.")

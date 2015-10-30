@@ -1,5 +1,5 @@
 ```
-DavePatcher 0.5.3 (2015) - SpiderDave https://github.com/SpiderDave/DavePatcher
+DavePatcher 0.5.5 (2015) - SpiderDave https://github.com/SpiderDave/DavePatcher
 A custom patcher for use with NES romhacking or general use.
 Lines starting with // are comments.
 
@@ -99,7 +99,35 @@ of multiple words.  Possible keywords:
         import tile data from png using current palette as a reference.
         Example:
             import 20010 100 tiles.png
+            
+    start tilemap <name>
+    ...
+    end
+        Define a tile map to be used with the export map command.
+        Example:
+            start tilemap batman
+            address = 2c000
+            81 1 0
+            82 2 0
+            90 0 1
+            91 1 1
+            92 2 1
+            a0 0 2
+            a1 1 2
+            a2 2 2
+            b0 0 3
+            b1 1 3
+            b2 2 3
+            end
 
+    export map <tilemap> <file>
+        export tile data to png file using a tile map.
+        Example:
+            export map batman batman_sprite_test.png
+    
+    import map
+        (not yet implemented)
+    
     gg <gg code>
         WIP
         decode a NES Game Genie code (does not apply it)
