@@ -1,6 +1,9 @@
 ```
-DavePatcher 0.5.5 (2015) - SpiderDave https://github.com/SpiderDave/DavePatcher
+DavePatcher 0.5.7 (2015) - SpiderDave https://github.com/SpiderDave/DavePatcher
 A custom patcher for use with NES romhacking or general use.
+
+Some commands require Lua-GD https://sourceforge.net/projects/lua-gd/
+
 Lines starting with // are comments.
 
     // This is a comment
@@ -104,20 +107,29 @@ of multiple words.  Possible keywords:
     ...
     end
         Define a tile map to be used with the export map command.
+        valid commands within the block are:
+        
+        address = <address>
+            Set the address for the tile map.
+        <tileNum> <x> <y> [h]
+            Tile map entry.  "h" in the fourth field is used to optionally flip
+            the tile horizontally.  In the future, other flags like "v" for
+            vertical flipping will be used here as well.
+        
         Example:
             start tilemap batman
             address = 2c000
-            81 1 0
-            82 2 0
-            90 0 1
-            91 1 1
-            92 2 1
-            a0 0 2
-            a1 1 2
-            a2 2 2
-            b0 0 3
-            b1 1 3
-            b2 2 3
+            81 1 0 h
+            82 2 0 h
+            90 0 1 h
+            91 1 1 h
+            92 2 1 h
+            a0 0 2 h
+            a1 1 2 h
+            a2 2 2 h
+            b0 0 3 h
+            b1 1 3 h
+            b2 2 3 h
             end
 
     export map <tilemap> <file>
@@ -126,7 +138,9 @@ of multiple words.  Possible keywords:
             export map batman batman_sprite_test.png
     
     import map
-        (not yet implemented)
+        import tile data from png file using a tile map
+        Example:
+            import map batman batman_sprite_test.png
     
     gg <gg code>
         WIP

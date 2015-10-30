@@ -1,6 +1,11 @@
+-- 
+--
+--                      WARNING: SLOPPY CODE
+--                 ABANDON HOPE ALL YE WHO ENTER HERE
+--
+-----------------------------------------------------------------------------
+
 -- ToDo:
---  * import/export tiles to/from sections of an existing image
---  * create tile maps to make above easier
 --  * apply game genie codes
 
 table.unpack = table.unpack or unpack
@@ -267,7 +272,7 @@ end
 local patcher = {
     info = {
         name = "DavePatcher",
-        version = "0.5.5",
+        version = "0.5.7",
         released = "2015",
         author = "SpiderDave",
         url = 'https://github.com/SpiderDave/DavePatcher'
@@ -397,20 +402,29 @@ of multiple words.  Possible keywords:
     ...
     end
         Define a tile map to be used with the export map command.
+        valid commands within the block are:
+        
+        address = <address>
+            Set the address for the tile map.
+        <tileNum> <x> <y> [h]
+            Tile map entry.  "h" in the fourth field is used to optionally flip
+            the tile horizontally.  In the future, other flags like "v" for
+            vertical flipping will be used here as well.
+        
         Example:
             start tilemap batman
             address = 2c000
-            81 1 0
-            82 2 0
-            90 0 1
-            91 1 1
-            92 2 1
-            a0 0 2
-            a1 1 2
-            a2 2 2
-            b0 0 3
-            b1 1 3
-            b2 2 3
+            81 1 0 h
+            82 2 0 h
+            90 0 1 h
+            91 1 1 h
+            92 2 1 h
+            a0 0 2 h
+            a1 1 2 h
+            a2 2 2 h
+            b0 0 3 h
+            b1 1 3 h
+            b2 2 3 h
             end
 
     export map <tilemap> <file>
@@ -771,6 +785,7 @@ function imageToTile2(tileMap, fileName)
     local tm=patcher.tileMap[tileMap]
     local out = {
         t={},
+        th={},
         pos={},
     }
     
@@ -797,21 +812,12 @@ function imageToTile2(tileMap, fileName)
         for y = 0, 7 do
             out.t[t][y] = 0
             out.t[t][y+8] = 0
-            --local byte = string.byte(tileData:sub(t*16+y+1,t*16+y+1))
-            --local byte2 = string.byte(tileData:sub(t*16+y+9,t*16+y+9))
             for x=0, 7 do
-                local c=0
-                --if bit.isSet(byte,7-x)==true then c=c+1 end
-                --if bit.isSet(byte2,7-x)==true then c=c+2 end
-                local c = image:getPixel(x+xo,y+yo)
+                local c = image:getPixel(x+xo,y+yo) or 0
                 local r,g,b=image:red(c),image:green(c),image:blue(c)
-                
                 for i=0,3 do
                     local pr,pg,pb = table.unpack(patcher.palette[patcher.colors[i]])
                     if string.format("%02x%02x%02x",r,g,b) == string.format("%02x%02x%02x",pr,pg,pb) then
-                        --io.write("*")
-                        --out.t[t][y*8+x]=i % 2
-                        --out.t[t][y*8+x+8]=math.floor(i / 2)
                         out.t[t][y]=out.t[t][y] + (2^(7-x)) * (i%2)
                         out.t[t][y+8]=out.t[t][y+8] + (2^(7-x)) * (math.floor(i/2))
                     end
@@ -835,10 +841,32 @@ function imageToTile2(tileMap, fileName)
         
         t=tm[i].tileNum
         local o=""
-        
-        for j=0,#out.t[t] do
-            o=o..string.char(out.t[tm[i].y*w/8+tm[i].x][j])
+        if tm[i].flip.vertical then
+            for j=7,0,-1 do
+                o=o..string.char(out.t[tm[i].y*w/8+tm[i].x][j])
+            end
+            for j=15,8,-1 do
+                o=o..string.char(out.t[tm[i].y*w/8+tm[i].x][j])
+            end
+        elseif tm[i].flip.horizontal then
+            for j=0,#out.t[t] do
+                local b=out.t[tm[i].y*w/8+tm[i].x][j]
+                local b2=0
+                for jj=0,7 do
+                    if bit.isSet(b, 7-jj) then
+                        b2=b2+2^jj
+                    end
+                end
+                o=o..string.char(b2)
+            end
+        else
+            for j=0,#out.t[t] do
+                o=o..string.char(out.t[tm[i].y*w/8+tm[i].x][j])
+            end
         end
+        
+        
+        
         
         tileData[i].t = o                           -- the tile data for this tile to be applied
         tileData[i].address = tm[i].address + t*16  -- the address to apply it to
@@ -911,7 +939,11 @@ function tileToImage2(tileMap, fileName)
                 if bit.isSet(byte2,7-x)==true then c=c+2 end
                 xo=tm[i].x*8
                 yo=tm[i].y*8
-                image:setPixel(x+xo,y+yo,colors[c])
+                if tm[i].flip.horizontal then
+                    image:setPixel(7-x+xo,y+yo,colors[c])
+                else
+                    image:setPixel(x+xo,y+yo,colors[c])
+                end
             end
         end
         --printf("tilemap index=%02x tileNum=%02x pos=(%02x,%02x) %02x %s",i,tm[i].tileNum, tm[i].x,tm[i].y,address,bin2hex(tileData))
@@ -1115,12 +1147,18 @@ while true do
                     --printf("%s=%s",k,v)
                     address = tonumber(v,16)
                 end
+            elseif line=="" then
             else
-                local tileNum, x, y = unpack(util.split(line," ",3))
+                local tileNum, x, y, flip = unpack(util.split(line," ",3))
                 tileNum = tonumber(tileNum,16)
                 x = tonumber(x,16)
                 y = tonumber(y,16)
-                tm[#tm+1]={address=address, tileNum=tileNum, x=x,y=y}
+                if flip=="h" then 
+                    flip = {horizontal=true}
+                else
+                    flip = {}
+                end
+                tm[#tm+1]={address=address, tileNum=tileNum, x=x,y=y, flip=flip}
                 --printf("%s: %s, %s", tileNum, x, y)
             end
         end
@@ -1165,6 +1203,7 @@ while true do
         if not writeToFile(file, address+patcher.offset,hex2bin(txt)) then quit("Error: Could not write to file.") end
     elseif keyword == 'gg' then
         local gg=data:upper()
+        gg=util.split(data," ",1)[1] -- Let's allow stuff after the code for descriptions, etc.  figure out a better comment system later.
         -- Used to map the GG characters to binary
         local ggMap={
             A="0000", P="0001", Z="0010", L="0011", G="0100", I="0101", T="0110", Y="0111",
@@ -1195,16 +1234,38 @@ while true do
                 binString2=binString2.." "
             end
         end
+        local v,a,c
         if #gg == 6 then
-            local value=tonumber(binString2:sub(1,8),2)
-            local address=tonumber(binString2:sub(10),2)
-            print(string.format("gg %s: 0x%08x value=0x%02x",gg,address,value))
+            v=tonumber(binString2:sub(1,8),2)
+            a=tonumber(binString2:sub(10),2)
+            print(string.format("gg %s: 0x%08x value=0x%02x",gg,a,v))
         elseif #gg == 8 then
-            local value = tonumber(binString2:sub(1,8),2)
-            local address = tonumber(("1"..binString2:sub(10,24)),2)
-            local compare = tonumber(binString2:sub(25,32),2)
-            print(string.format("gg %s: 0x%08x compare=0x%02x value=0x%02x",gg,address,compare,value))
+            v = tonumber(binString2:sub(1,8),2)
+            a = tonumber(("1"..binString2:sub(10,24)),2)
+            c = tonumber(binString2:sub(25,32),2)
+            print(string.format("gg %s: 0x%08x compare=0x%02x value=0x%02x",gg,a,c,v))
         end
+        
+        -- Hopefully this is right
+        local address=a % 0x4000
+        
+        print("    Addresses:")
+        for i=1,100 do
+            if c then
+                local b=patcher.fileData:sub(address+patcher.offset+1,address+patcher.offset+1):byte()
+                if c == b then
+                    printf("    %04x",address+patcher.offset)
+                    if not writeToFile(file, address+patcher.offset,string.char(v)) then quit("Error: Could not write to file.") end
+                end
+                --printf("%04x %02x %02x",address+patcher.offset,b,c)
+            else
+                printf("    %04x",address+patcher.offset)
+                if not writeToFile(file, address+patcher.offset,string.char(v)) then quit("Error: Could not write to file.") end
+            end
+            address=address+ 0x2000
+            if address > #patcher.fileData or address>=0x20000 then break end
+        end
+        
     elseif startsWith(line, 'copy hex ') then
         local data=string.sub(line,10)
         local address = data:sub(1,(data:find(' ')))
@@ -1330,7 +1391,9 @@ while true do
         if not (data == 'update') then
             quit("Error: bad or missing readme parameter.")
         end
-        if (writeToFile("README.md",0,'```\n'..patcher.help.info ..'\n'.. patcher.help.description ..'\n'.. patcher.help.commands..'\n```')) then
+        -- Throw in a little extra info here
+        txt = "\nSome commands require Lua-GD https://sourceforge.net/projects/lua-gd/\n"
+        if (writeToFile("README.md",0,'```\n'..patcher.help.info ..'\n'.. patcher.help.description ..'\n'..txt.."\n".. patcher.help.commands..'\n```')) then
             print('README updated')
         else
             print('README update failed')
