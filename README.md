@@ -1,5 +1,5 @@
 ```
-DavePatcher 0.5.7 (2015) - SpiderDave https://github.com/SpiderDave/DavePatcher
+DavePatcher v2017.02.28 - SpiderDave https://github.com/SpiderDave/DavePatcher
 A custom patcher for use with NES romhacking or general use.
 
 Some commands require Lua-GD https://sourceforge.net/projects/lua-gd/
@@ -13,6 +13,10 @@ shown in the output when running the patcher.
     
     # This is an annotation
     
+Lines starting with : are labels.
+    
+    :myLabel
+    
 Keywords are lowercase, usually followed by a space.  Some "keywords" consist
 of multiple words.  Possible keywords:
 
@@ -20,20 +24,38 @@ of multiple words.  Possible keywords:
     commands
         Show this help.  May be useful in interactive mode.
         
-    hex <address> <data>
+    get <address> <len>
+        display <len> bytes of data at <address>
+    get hex <address> <len>
+        (depreciated) same as get
+    
+    get asm <address> <len>
+        get <len> bytes of data at <address> and analyze using 6502 opcodes, 
+        display formatted asm data.
+    
+    print asm <data>
+        analyze hexidecimal data <data> using 6502 opcodes, display formatted 
+        asm data.
+    
+    put <address> <data>
         Set data at <address> to <data>.  <data> should be hexidecimal, and
         its length should be a multiple of 2.  You may include spaces in data
         for readability.
         Example:
             hex a010 0001ff
-            
-    copy hex <address1> <address2> <length>
+    hex <address> <data>
+        (depreciated) same as put
+    
+    copy <address1> <address2> <length>
         Copies data from <address1> to <address2>.  The number of bytes is
         specified in hexidecimal by <length>.
 
         Example:
             copy hex a010 b010 0a
             
+    copy hex <address1> <address2> <length>
+        (depreciated) same as copy
+        
     text <address> <text>
         Set data at <address> to <text>.  Use the textmap command to set a 
         custom format for the text.  If no textmap is set, ASCII is assumed.
@@ -63,9 +85,25 @@ of multiple words.  Possible keywords:
         Example:
             textmap space 00
             
+    skip
+    ...
+    end
+        skip this section.  You may put text after skip and end.
+        Example:
+        skip -------------
+        // unstable
+        put 10000 55
+        end skip ---------
+    
     break
         Use this to end the patch early.  Handy if you want to add some
         testing stuff at the bottom.
+        
+    goto <label>
+        Go to the label <label>.
+        Example:
+            goto foobar
+            :foobar
         
     start <address>
         Set the starting address for commands
@@ -142,9 +180,11 @@ of multiple words.  Possible keywords:
         Example:
             import map batman batman_sprite_test.png
     
-    gg <gg code>
-        WIP
-        decode a NES Game Genie code (does not apply it)
+    gg <gg code> [anything]
+        decode and apply a NES Game Genie code.  If there is a space after the
+        code you may add whatever text you like, as a convenience.
+        Example:
+            gg SZNZVOVK        Infinite bombs
         
     refresh
         refreshes the data so that keywords like "find text" will use the new
@@ -168,5 +208,10 @@ of multiple words.  Possible keywords:
         
     diff <file>
         Show differences between the current file and <file>
+    
+    repeat <n>
+    ...
+    end
+        Repeat the lines in the block <n> times.
 
 ```
