@@ -19,6 +19,7 @@ end) then
 end
 
 require "os"
+math.randomseed(os.time ()) math.random() math.random() math.random()
 
 --local winapi = require("winapi")
 
@@ -43,6 +44,7 @@ local patcher = {
         index = 0
     },
     base = 16,
+    smartSearch={},
 }
 
 patcher.results.clear = function()
@@ -50,6 +52,28 @@ patcher.results.clear = function()
         patcher.results[i]=nil
     end
 end
+
+patcher.findHex = function(data)
+    local address = 0
+    local results = {}
+    for i = 1,100 do
+        address = patcher.fileData:find(hex2bin(data),address+1+patcher.offset, true)
+        if address then
+            if address>patcher.startAddress+patcher.offset then
+                results[i]={address=address-1-patcher.offset}
+            end
+        else
+            break
+        end
+    end
+    if #results == 0 then return nil end
+    return results
+end
+
+patcher.getHex = function(address, len)
+    return bin2hex(patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+len))
+end
+
 
 local util={}
 
@@ -96,6 +120,7 @@ end
 
 printf = util.printf
 
+util.random = math.random
 
 local asm={}
 
@@ -774,8 +799,8 @@ util.sandbox.loadCode = function(self, code)
     end
 end
 
-function quit(text)
-  if text then print(text) end
+function quit(text,...)
+  if text then printf(text,...) end
   os.exit()
 end
 
@@ -1233,24 +1258,137 @@ while true do
             print(patcher.help.interactive)
         elseif keyword == "commands" then
             print(patcher.help.commands)
+--        elseif keyword == "replace" then
+--            print(patcher.lastFound or "none")
+        elseif keyword == "_corrupt" then
+            local address = util.random(1,#patcher.fileData-patcher.offset)
+            local len = 1
+            local oldData=bin2hex(patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+len))
+            local newData = bin2hex(string.char(util.random(255)))
+            
+            printf("Corrupting data at 0x%08x: %s --> %s",address, oldData, newData)
+            if not writeToFile(file, address+patcher.offset,hex2bin(newData)) then quit("Error: Could not write to file.") end
+--        elseif startsWith(line:lower(), '_smartsearch lives can_increase ') then
+            
+--            local data = string.sub(line,33)
+--            data = data:lower()
+            
+--            if data:lower() == "true" then
+--                patcher.smartSearch.lives_can_increase = true
+--            elseif data == "false" then
+--                patcher.smartSearch.lives_can_increase = false
+--                print("test!!!!!!!!!!!!!!!!!!")
+                
+--            else
+--                quit("Error: unknown smartsearch parameter: '%s'.", data:lower())
+--            end
+        elseif startsWith(line:lower(), '_smartsearch lives ') then
+            --search for a9xx8dyyyy (xx is given number of, yyyy is memory location we'll save for later)
+            --search for ceyyyy for each result (ce is decrement, yyyy is the memory location we just found)
+            --search for eeyyyy for each result (ce is increment, yyyy is the memory location we just found)
+            -- The assumption here is that there's going to be a way to get more lives in any game (item, points, etc)
+            
+            -- Alternate:
+            --search for a9xx85yy (xx is given number of, 00yy is memory location we'll save for later)
+            --search for c6yy for each result (c6 is decrement, 00yy is the memory location we just found)
+            --search for e6yy for each result (e6 is increment, 00yy is the memory location we just found)
+            
+            local data = string.sub(line,20)
+            local nLives = util.split(data, " ")[1]
+            local can_increase = util.split(data, " ", 1)[2]
+            can_increase = can_increase:lower()
+            
+--            printf("nLives = [%s]",nLives)
+--            printf("can_increase = [%s]",can_increase)
+            
+            if can_increase == "true" then
+                can_increase = true
+            elseif can_increase == "false" then
+                can_increase = false
+            else
+                quit("Error: unknown smartsearch parameter: '%s'.", can_increase)
+            end
+            
+            printf("* * * Smart search * * *")
+            printf("Searching for lives (Starting lives = %s, can increase = %s):", nLives, can_increase and "true" or "false")
+            
+            local methods = {}
+            --methods[1] = {"a9%s8d",2,"ce%s","ee%s",can_increase, "put %04x eaeaea"}
+            --methods[2] = {"a9%s85",1,"c6%s","e6%s",can_increase, "put %04x eaea"}
+            methods[1] = {"a9%s8d",2,"ce%s","ee%s",can_increase, "put %x ad"}
+            methods[2] = {"a9%s85",1,"c6%s","e6%s",can_increase, "put %x a5"}
+            --methods[3] = {"a9%s85",1,"ce%s","ee%s"}
+            
+            --printf("can_increase = %s",can_increase and "true" or "false")
+            
+            print("Possible infinite lives parameters:")
+            for method = 1, #methods do
+                --printf("method %s: ",method)
+                local data = string.format(methods[method][1], nLives)
+                
+                local results = patcher.findHex(data)
+                local results2={}
+                local results2_flags = {} -- this is to help with duplicates
+                for i=1, #results do
+                    local a = patcher.getHex(results[i].address+3, methods[method][2])
+                    --printf("test 0x%08x %s",results[i].address, a)
+                    if results2_flags[a] then
+                    else
+                        results2_flags[a]= true
+                        results2[#results2+1] = a
+                    end
+                end
+                
+                --printf("nresults2 %s",#results2)
+                
+                local results3 = {}
+                for i = 1, #results2 do
+                    --if patcher.findHex(string.format(methods[method][3],results2[i])) and patcher.findHex(string.format(methods[method][4],results2[i])) then
+                    if patcher.findHex(string.format(methods[method][3],results2[i])) and ((not not patcher.findHex(string.format(methods[method][4],results2[i])))==methods[method][5]) then
+                        --printf(methods[method][3],results2[i])
+                        local r = patcher.findHex(string.format(methods[method][3],results2[i]))
+                        for j=1,#r do
+                            results3[#results3+1]=r[j].address
+                        end
+                    end
+                end
+                if #results3>0 then
+                    printf("method %s: ",method)
+                end
+                for i=1,#results3 do
+                    printf(methods[method][6],results3[i])
+                end
+            end
+            printf("")
         elseif startsWith(line:lower(), 'find hex ') then
             local data=string.sub(line,10)
             address=0
             print(string.format("Find hex: %s",data))
             patcher.results.clear()
-            for i=1,50 do
+            
+            local nResults = 0
+            local limit = 50
+            while true do
+            --for i=1,50 do
                 --address = filedata:find(hex2bin(data),address+1+patcher.offset, true)
                 address = patcher.fileData:find(hex2bin(data),address+1+patcher.offset, true)
                 if address then
                     if address>patcher.startAddress+patcher.offset then
                         print(string.format("    %s Found at 0x%08x",data,address-1-patcher.offset))
-                        patcher.results[i]={address=address-1-patcher.offset}
+                        patcher.results[#patcher.results+1]={address=address-1-patcher.offset}
+                        nResults = nResults + 1
+                        if nResults >= limit then break end
                     end
                 else
                     break
                 end
             end
             patcher.results.index = 1
+            if #patcher.results > 0 then
+                patcher.lastFound = patcher.results[1].address
+            else
+                patcher.lastFound = nil
+            end
         elseif startsWith(line:lower(), 'get hex ') then
             local data=string.sub(line,9)
 
@@ -1523,12 +1661,12 @@ while true do
                 if c then
                     local b=patcher.fileData:sub(address+patcher.offset+1,address+patcher.offset+1):byte()
                     if c == b then
-                        printf("    %04x",address+patcher.offset)
+                        printf("    %04x",address)
                         if not writeToFile(file, address+patcher.offset,string.char(v)) then quit("Error: Could not write to file.") end
                     end
                     --printf("%04x %02x %02x",address+patcher.offset,b,c)
                 else
-                    printf("    %04x",address+patcher.offset)
+                    printf("    %04x",address)
                     if not writeToFile(file, address+patcher.offset,string.char(v)) then quit("Error: Could not write to file.") end
                 end
                 address=address+ 0x2000
@@ -1619,6 +1757,7 @@ while true do
             print("Applying ips patch: "..ips.n)
             --ips.file = io.open(ips.n,"r")
             ips.data = getfilecontents(ips.n)
+            print(#ips.data)
             ips.header = ips.data:sub(1,5)
             if ips.header ~= "PATCH" then quit ("Error: Invalid ips header.") end
             --print ("ips header: "..ips.header)

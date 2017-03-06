@@ -1,5 +1,5 @@
 ```
-DavePatcher v2017.02.28 - SpiderDave https://github.com/SpiderDave/DavePatcher
+DavePatcher v2017.03.06 - SpiderDave https://github.com/SpiderDave/DavePatcher
 A custom patcher for use with NES romhacking or general use.
 
 Some commands require Lua-GD https://sourceforge.net/projects/lua-gd/
