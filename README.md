@@ -1,5 +1,5 @@
 ```
-DavePatcher v2017.03.06 - SpiderDave https://github.com/SpiderDave/DavePatcher
+DavePatcher v2017.03.28 - SpiderDave https://github.com/SpiderDave/DavePatcher
 A custom patcher for use with NES romhacking or general use.
 
 Some commands require Lua-GD https://sourceforge.net/projects/lua-gd/
@@ -143,7 +143,7 @@ of multiple words.  Possible keywords:
             
     start tilemap <name>
     ...
-    end
+    end tilemap
         Define a tile map to be used with the export map command.
         valid commands within the block are:
         

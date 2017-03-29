@@ -621,7 +621,7 @@ of multiple words.  Possible keywords:
             
     start tilemap <name>
     ...
-    end
+    end tilemap
         Define a tile map to be used with the export map command.
         valid commands within the block are:
         
@@ -1152,8 +1152,8 @@ function tileToImage2(tileMap, fileName)
                 local c=0
                 if bit.isSet(byte,7-x)==true then c=c+1 end
                 if bit.isSet(byte2,7-x)==true then c=c+2 end
-                xo=tm[i].x*8
-                yo=tm[i].y*8
+                xo=tm[i].x*8+tm[i].adjust.x or 0
+                yo=tm[i].y*8+tm[i].adjust.y or 0
                 if tm[i].flip.horizontal then
                     image:setPixel(7-x+xo,y+yo,colors[c])
                 else
@@ -1181,6 +1181,7 @@ if arg[1]=="-?" or arg[1]=="/?" or arg[1]=="/help" or arg[1]=="/h" or arg[1]=="-
 end
 
 file=arg[2]
+patcher.fileName = arg[2]
 if not arg[1] or not arg[2] or arg[3] then
     print(patcher.help.info)
     print(patcher.help.description)
@@ -1194,10 +1195,10 @@ if arg[1] == "-i" then
     print(patcher.help.interactive)
 end
 
-printVerbose(string.format("file: %s",file))
+printVerbose(string.format("file: %s",patcher.fileName))
 
 file_dumptext = nil
-patcher.fileData = getfilecontents(file)
+patcher.fileData = getfilecontents(patcher.fileName)
 
 local patchfile
 if not patcher.interactive==true then
@@ -1267,7 +1268,7 @@ while true do
             local newData = bin2hex(string.char(util.random(255)))
             
             printf("Corrupting data at 0x%08x: %s --> %s",address, oldData, newData)
-            if not writeToFile(file, address+patcher.offset,hex2bin(newData)) then quit("Error: Could not write to file.") end
+            if not writeToFile(patcher.fileName, address+patcher.offset,hex2bin(newData)) then quit("Error: Could not write to file.") end
 --        elseif startsWith(line:lower(), '_smartsearch lives can_increase ') then
             
 --            local data = string.sub(line,33)
@@ -1375,6 +1376,43 @@ while true do
                 if address then
                     if address>patcher.startAddress+patcher.offset then
                         print(string.format("    %s Found at 0x%08x",data,address-1-patcher.offset))
+                        patcher.results[#patcher.results+1]={address=address-1-patcher.offset}
+                        nResults = nResults + 1
+                        if nResults >= limit then break end
+                    end
+                else
+                    break
+                end
+            end
+            patcher.results.index = 1
+            if #patcher.results > 0 then
+                patcher.lastFound = patcher.results[1].address
+            else
+                patcher.lastFound = nil
+            end
+        elseif startsWith(line:lower(), 'replace hex ') then
+            local data=string.sub(line,13)
+            local address=0
+            local findValue = util.split(data," ")[1]
+            local replaceValue = util.split(data," ")[2]
+            
+            local nResults = 0
+            local limit = 50
+            if util.split(data, " ")[3] then
+                limit = tonumber(util.split(data, " ")[3],16)
+            end
+            
+            print(string.format("Find and replace hex: %s --> %s (limit %s)",findValue, replaceValue, limit))
+            patcher.results.clear()
+            
+            while true do
+            --for i=1,50 do
+                --address = filedata:find(hex2bin(data),address+1+patcher.offset, true)
+                address = patcher.fileData:find(hex2bin(findValue),address+1+patcher.offset, true)
+                if address then
+                    if address>patcher.startAddress+patcher.offset then
+                        print(string.format("    %s Found at 0x%08x, replacing with %s",findValue,address-1-patcher.offset,replaceValue))
+                        if not writeToFile(patcher.fileName, address-1,hex2bin(replaceValue)) then quit("Error: Could not write to file.") end
                         patcher.results[#patcher.results+1]={address=address-1-patcher.offset}
                         nResults = nResults + 1
                         if nResults >= limit then break end
@@ -1502,10 +1540,10 @@ while true do
             local address,td
             for i=1,#tileData do
                 address,td=tileData[i].address, tileData[i].t
-                if not writeToFile(file, address+patcher.offset,td) then quit("Error: Could not write to file.") end
+                if not writeToFile(patcher.fileName, address+patcher.offset,td) then quit("Error: Could not write to file.") end
             end
             
-            --if not writeToFile(file, address+patcher.offset,tileData) then quit("Error: Could not write to file.") end
+            --if not writeToFile(patcher.fileName, address+patcher.offset,tileData) then quit("Error: Could not write to file.") end
         elseif startsWith(line, 'import ') then
             if not gd then
                 quit("Error: could not use import command because gd did not load.")
@@ -1517,7 +1555,7 @@ while true do
             print(string.format("importing tile at 0x%08x",address))
             local tileData = imageToTile(len, fileName)
             
-            if not writeToFile(file, address+patcher.offset,tileData) then quit("Error: Could not write to file.") end
+            if not writeToFile(patcher.fileName, address+patcher.offset,tileData) then quit("Error: Could not write to file.") end
         elseif startsWith(line, 'goto ') then
             local label = util.trim(string.sub(line,6))
             patchfile:seek("set")
@@ -1535,16 +1573,18 @@ while true do
             while true do
                 nSkipped = nSkipped +1
                 line = util.trim(patchfile:read("*l"))
-                if startsWith(line, "end") then break end
+                if startsWith(line, "end skip") then break end
             end
             print(string.format("skipped %d lines.", nSkipped-1))
         elseif startsWith(line, 'start tilemap ') then
             local n = string.sub(line,15)
             local tm={}
             local address = 0
+            local adjustX = 0
+            local adjustY = 0
             while true do
                 line = util.trim(patchfile:read("*l"))
-                if startsWith(line, "end") then break end
+                if startsWith(line, "end tilemap") then break end
                 if line:find("=") then
                     local k,v=unpack(util.split(line, "="))
                     k=util.trim(k)
@@ -1552,6 +1592,12 @@ while true do
                     if k == "address" then
                         --printf("%s=%s",k,v)
                         address = tonumber(v,16)
+                    end
+                    if k == "adjust" then
+                        adjustX = tonumber(util.split(v," ")[1],10)
+                        adjustY = tonumber(util.split(v," ")[2],10)
+                        print(string.format("adjust x = %s (%s)",adjustX, util.split(v," ")[1]))
+                        print(string.format("adjust y = %s (%s)",adjustY, util.split(v," ")[2]))
                     end
                 elseif line=="" or startsWith(line, "//") then
                 else
@@ -1564,7 +1610,7 @@ while true do
                     else
                         flip = {}
                     end
-                    tm[#tm+1]={address=address, tileNum=tileNum, x=x,y=y, flip=flip}
+                    tm[#tm+1]={address=address, tileNum=tileNum, x=x,y=y, flip=flip, adjust = {x=adjustX,y=adjustY}}
                     --printf("%s: %s, %s", tileNum, x, y)
                 end
             end
@@ -1584,7 +1630,7 @@ while true do
             
             txt=mapText(txt)
             
-            if not writeToFile(file, address+patcher.offset,txt) then quit("Error: Could not write to file.") end
+            if not writeToFile(patcher.fileName, address+patcher.offset,txt) then quit("Error: Could not write to file.") end
         elseif keyword == 'textmap' then
             local mapOld = data:sub(1,(data:find(' ')-1))
             local mapNew = data:sub((data:find(' ')+1))
@@ -1607,7 +1653,7 @@ while true do
             old=patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+#txt/2)
             old=bin2hex(old)
             printf("Setting bytes: 0x%08x: %s --> %s",address,old, txt)
-            if not writeToFile(file, address+patcher.offset,hex2bin(txt)) then quit("Error: Could not write to file.") end
+            if not writeToFile(patcher.fileName, address+patcher.offset,hex2bin(txt)) then quit("Error: Could not write to file.") end
         elseif keyword == 'gg' then
             local gg=data:upper()
             gg=util.split(data," ",1)[1] -- Let's allow stuff after the code for descriptions, etc.  figure out a better comment system later.
@@ -1662,12 +1708,12 @@ while true do
                     local b=patcher.fileData:sub(address+patcher.offset+1,address+patcher.offset+1):byte()
                     if c == b then
                         printf("    %04x",address)
-                        if not writeToFile(file, address+patcher.offset,string.char(v)) then quit("Error: Could not write to file.") end
+                        if not writeToFile(patcher.fileName, address+patcher.offset,string.char(v)) then quit("Error: Could not write to file.") end
                     end
                     --printf("%04x %02x %02x",address+patcher.offset,b,c)
                 else
                     printf("    %04x",address)
-                    if not writeToFile(file, address+patcher.offset,string.char(v)) then quit("Error: Could not write to file.") end
+                    if not writeToFile(patcher.fileName, address+patcher.offset,string.char(v)) then quit("Error: Could not write to file.") end
                 end
                 address=address+ 0x2000
                 if address > #patcher.fileData or address>=0x20000 then break end
@@ -1685,7 +1731,7 @@ while true do
             l = tonumber(l, 16)
             data = patcher.fileData:sub(address+1+patcher.offset,address+1+patcher.offset+l-1)
             print(string.format("Copying 0x%08x bytes from 0x%08x to 0x%08x",l, address, address2))
-            if not writeToFile(file, address2+patcher.offset,data) then quit("Error: Could not write to file.") end
+            if not writeToFile(patcher.fileName, address2+patcher.offset,data) then quit("Error: Could not write to file.") end
         elseif startsWith(line, 'copy ') then
             local data=string.sub(line,6)
             local address = data:sub(1,(data:find(' ')))
@@ -1698,13 +1744,20 @@ while true do
             l = tonumber(l, 16)
             data = patcher.fileData:sub(address+1+patcher.offset,address+1+patcher.offset+l-1)
             print(string.format("Copying 0x%08x bytes from 0x%08x to 0x%08x",l, address, address2))
-            if not writeToFile(file, address2+patcher.offset,data) then quit("Error: Could not write to file.") end
+            if not writeToFile(patcher.fileName, address2+patcher.offset,data) then quit("Error: Could not write to file.") end
         elseif line=="break" or line == "quit" or line == "exit" then
             print("[break]")
             --break
             breakLoop=true
         elseif line=="refresh" then
-            patcher.fileData=getfilecontents(file)
+            patcher.fileData=getfilecontents(patcher.fileName)
+        elseif line=="write all" then
+            if not writeToFile(patcher.fileName, patcher.offset,patcher.fileData) then quit("Error: Could not write to file.") end
+        elseif keyword=="file" then
+            patcher.fileName = data
+            file = data
+            printf("File: %s",patcher.fileName)
+            --patcher.fileData=getfilecontents(patcher.fileName)
         elseif keyword == 'start' then
             patcher.startAddress = tonumber(data, 16)
             print("Setting Start Address: "..data)
@@ -1801,7 +1854,7 @@ while true do
                 printVerbose(string.format("replacing 0x%08x bytes at 0x%08x", #ips.replaceData, ips.offset))
                 --printVerbose(string.format("replacing: 0x%08x %s", ips.offset, bin2hex(ips.replaceData))) -- MAKES IT HANG
                 printVerbose(string.format("0x%08x",ips.address))
-                if not writeToFile(file, ips.offset+patcher.offset,ips.replaceData) then quit("Error: Could not write to file.") end
+                if not writeToFile(patcher.fileName, ips.offset+patcher.offset,ips.replaceData) then quit("Error: Could not write to file.") end
                 loopCount = loopCount+1
                 if loopCount >=loopLimit then
                     quit ("Error: Loop limit reached.")
