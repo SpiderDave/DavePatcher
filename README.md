@@ -211,7 +211,7 @@ of multiple words.  Possible keywords:
     
     repeat <n>
     ...
-    end
+    end repeat
         Repeat the lines in the block <n> times.
 
 ```
