@@ -37,6 +37,7 @@ local patcher = {
     gotoCount = 0,
     gotoLimit = 100,
     verbose = false,
+    showAnnotations = true,
     interactive = false,
     prompt = "> ",
     tileMap={},
@@ -48,6 +49,7 @@ local patcher = {
     variables = {},
 }
 
+local patch = {}
 
 function patcher.getHeader(str)
     local str = str or patcher.fileData:sub(1,16)
@@ -136,6 +138,8 @@ function util.rtrim(s)
   while n > 0 and s:find("^%s", n) do n = n - 1 end
   return s:sub(1, n)
 end
+
+util.startsWith = startsWith
 
 -- hint is a hint on how to format it
 util.toNumber = function(s, hint)
@@ -521,17 +525,33 @@ Options:
 patcher.help.interactive = [[Type "help" for this help, "commands" for more information or "break" to quit.]]
 patcher.help.commands = [[
 Lines starting with // are comments.
-
+    
     // This is a comment
+    
+You can also do a comment at the end of a line:
+    
+    put 1234 a963 // set lives to 99
+    
+When comments are stripped, it will remove up to one space before the // 
+automatically, so if you need whitespace in your command, add an extra 
+space before the // like so:
+    
+    text 5678 FOOBAR  // set name to "FOOBAR "
     
 Lines starting with # are "annotations"; Annotations are comments that are
 shown in the output when running the patcher.
     
     # This is an annotation
     
-Lines starting with : are labels.
+Lines starting with : are labels.  See also "goto" keyword.
     
     :myLabel
+    
+You can use %variable% for variables to make replacements in a line:
+    
+    var foobar = fox
+    var baz = dog
+    # the quick brown %foobar% jumps over the lazy %baz%.
     
 Keywords are lowercase, usually followed by a space.  Some "keywords" consist
 of multiple words.  Possible keywords:
@@ -867,6 +887,55 @@ function getfilecontents(path)
     io.close(file)
     return ret
 end
+
+local patch = {
+    file = "patch.txt",
+    index = 1,
+}
+
+function patch.load(file)
+    local lines = {}
+    file = file or patch.file
+    for line in io.lines(file) do 
+        if string.find(line," //") then
+            -- remove comments with a space before them
+            line = string.sub(line, 1, string.find(line," //") -1)
+        end
+        if string.find(line,"//") then
+            -- remove comments
+            line = string.sub(line, 1, string.find(line,"//") -1)
+        end
+        
+        -- variable replacement
+        for k,v in pairs(patcher.variables) do
+            line = string.gsub(line, "%%"..k.."%%", v)
+        end
+        
+        if util.trim(line or "") == "" then
+            --ignore empty lines
+        else
+            lines[#lines + 1] = line
+        end
+    end
+    patch.lines = lines
+    return lines
+end
+
+function patch.readLine()
+    patch.index = patch.index + 1
+    if patch.index > # patch.lines then return nil end
+
+    local line = patch.lines[patch.index]
+    
+    -- variable replacement
+    for k,v in pairs(patcher.variables) do
+        line = string.gsub(line, "%%"..k.."%%", v)
+    end
+
+
+    return line
+end
+
 
 function setfilecontents(file, data)
     local f,err = io.open(file,"w")
@@ -1259,7 +1328,8 @@ patcher.header = patcher.getHeader()
 
 local patchfile
 if not patcher.interactive==true then
-    patchfile = io.open(arg[1] or "patch.txt","r")
+    --patchfile = io.open(arg[1] or "patch.txt","r")
+    patch.load(arg[1] or "patch.txt")
     print(patcher.help.info)
 end
 local breakLoop = false
@@ -1270,7 +1340,8 @@ while true do
         io.write(patcher.prompt)
         line = io.stdin:read("*l")
     else
-        line = patchfile:read("*l")
+        --line = patchfile:read("*l")
+        line = patch.readLine()
     end
     if line == nil then break end
     line = util.ltrim(line)
@@ -1284,7 +1355,8 @@ while true do
         patcher.lineQueue.r = util.toNumber(data)
         printf("repeat %02x",patcher.lineQueue.r)
         while true do
-            line = patchfile:read("*l")
+            --line = patchfile:read("*l")
+            line = patch.readLine()
             line = util.ltrim(line)
             keyword,data = unpack(util.split(line," ",1))
             keyword=keyword:lower()
@@ -1302,8 +1374,10 @@ while true do
             keyword,data=patcher.lineQueue[r].keyword,patcher.lineQueue[r].data
         end
         
-        if startsWith(line, '#') then
-            print(string.sub(line,1))
+        if startsWith(line, "#") then
+            if patcher.showAnnotations or patcher.verbose then
+                print(string.sub(line,1))
+            end
         elseif startsWith(line, '//') then
             -- comment
         elseif startsWith(line, "verbose off") then
@@ -1312,6 +1386,13 @@ while true do
         elseif startsWith(line, "verbose on") or line == "verbose" then
             patcher.verbose = true
             print("verbose on")
+        elseif keyword == "test" then
+            print("")
+            local lines = patch.load("patch.txt")
+            for k,v in pairs(lines) do
+              printf("line[%02x] [%s]",k,v)
+            end
+            print("")
         elseif keyword == "help" then
             print(patcher.help.interactive)
         elseif keyword == "commands" then
@@ -1621,9 +1702,11 @@ while true do
             if not writeToFile(patcher.fileName, address+patcher.offset,tileData) then err("Could not write to file.") end
         elseif startsWith(line, "goto ") then
             local label = util.trim(string.sub(line,6))
-            patchfile:seek("set")
+            --patchfile:seek("set")
+            patch.index = 1
             while true do
-                line = util.trim(patchfile:read("*l"))
+                --line = util.trim(patchfile:read("*l"))
+                line = patch.readLine()
                 if startsWith(line, ":"..label) then break end
             end
             patcher.gotoCount = patcher.gotoCount + 1
@@ -1635,7 +1718,8 @@ while true do
             local nSkipped = 0
             while true do
                 nSkipped = nSkipped +1
-                line = util.trim(patchfile:read("*l"))
+                --line = util.trim(patchfile:read("*l"))
+                line = patch.readLine()
                 if startsWith(line, "end skip") then break end
             end
             print(string.format("skipped %d lines.", nSkipped-1))
@@ -1658,7 +1742,8 @@ while true do
                 local nSkipped = 0
                 while true do
                     nSkipped = nSkipped +1
-                    line = util.trim(patchfile:read("*l"))
+                    --line = util.trim(patchfile:read("*l"))
+                    line = patch.readLine()
                     if startsWith(line, "end if") then break end
                     if startsWith(line, "else") then break end
                 end
@@ -1670,7 +1755,8 @@ while true do
                 local nSkipped = 0
                 while true do
                     nSkipped = nSkipped +1
-                    line = util.trim(patchfile:read("*l"))
+                    --line = util.trim(patchfile:read("*l"))
+                    line = patch.readLine()
                     if startsWith(line, "end if") then break end
                 end
                 --print(string.format("skipped %d lines.", nSkipped-1))
@@ -1683,7 +1769,8 @@ while true do
             local adjustX = 0
             local adjustY = 0
             while true do
-                line = util.trim(patchfile:read("*l"))
+                --line = util.trim(patchfile:read("*l"))
+                line = patch.readLine()
                 if startsWith(line, "end tilemap") then break end
                 if line:find("=") then
                     local k,v=unpack(util.split(line, "="))
@@ -1715,13 +1802,16 @@ while true do
                 end
             end
             patcher.tileMap[n] = tm
-        elseif keyword == 'eval' then
-            local f=util.sandbox:loadCode('return '..data)
+        elseif keyword == "eval" then
+            local f=util.sandbox:loadCode("return "..data)
             print(f())
-        elseif keyword == 'code' then
+        elseif keyword == "code" then
             local f=util.sandbox:loadCode(data)
             f()
-        elseif keyword == 'text' then
+        elseif keyword == "plugin" then
+            local f=util.sandbox:loadCode(data)
+            f()
+        elseif keyword == "text" then
             local address = data:sub(1,(data:find(' ')))
             address = tonumber(address, 16)
             txt=data:sub((data:find(' ')+1))
@@ -2017,6 +2107,6 @@ while true do
     end
 end
 if not patcher.interactive then
-    patchfile:close()
+    --patchfile:close()
 end
 print('done.')

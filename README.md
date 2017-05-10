@@ -1,21 +1,37 @@
 ```
-DavePatcher v2017.03.28 - SpiderDave https://github.com/SpiderDave/DavePatcher
+DavePatcher v2017.05.09 - SpiderDave https://github.com/SpiderDave/DavePatcher
 A custom patcher for use with NES romhacking or general use.
 
 Some commands require Lua-GD https://sourceforge.net/projects/lua-gd/
 
 Lines starting with // are comments.
-
+    
     // This is a comment
+    
+You can also do a comment at the end of a line:
+    
+    put 1234 a963 // set lives to 99
+    
+When comments are stripped, it will remove up to one space before the // 
+automatically, so if you need whitespace in your command, add an extra 
+space before the // like so:
+    
+    text 5678 FOOBAR  // set name to "FOOBAR "
     
 Lines starting with # are "annotations"; Annotations are comments that are
 shown in the output when running the patcher.
     
     # This is an annotation
     
-Lines starting with : are labels.
+Lines starting with : are labels.  See also "goto" keyword.
     
     :myLabel
+    
+You can use %variable% for variables to make replacements in a line:
+    
+    var foobar = fox
+    var baz = dog
+    # the quick brown %foobar% jumps over the lazy %baz%.
     
 Keywords are lowercase, usually followed by a space.  Some "keywords" consist
 of multiple words.  Possible keywords:
@@ -213,5 +229,18 @@ of multiple words.  Possible keywords:
     ...
     end repeat
         Repeat the lines in the block <n> times.
+    
+    var <var name> = <string>
+        A basic variable assignment.  Currently you can only assign a string
+        value.
+    
+    if <var>==<string>
+    ...
+    else
+    ...
+    end if
+        A basic if,else,end if block.  "else" is optional, and it's very 
+        limited.  Can not be nested currently, only comparison with string
+        is supported.
 
 ```
