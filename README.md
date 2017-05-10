@@ -58,9 +58,18 @@ of multiple words.  Possible keywords:
         its length should be a multiple of 2.  You may include spaces in data
         for readability.
         Example:
-            hex a010 0001ff
+            put a010 0001ff
     hex <address> <data>
         (depreciated) same as put
+    
+    fill <address> <count> <data>
+        Fill the address at <address> with <data> repeated <count> times.
+        
+        Example:
+            put a010 06 a900
+            
+        This is the same as:
+            put a010 a900a900a900a900a900a900
     
     copy <address1> <address2> <length>
         Copies data from <address1> to <address2>.  The number of bytes is
@@ -76,7 +85,7 @@ of multiple words.  Possible keywords:
         Set data at <address> to <text>.  Use the textmap command to set a 
         custom format for the text.  If no textmap is set, ASCII is assumed.
         Example:
-            hex a010 FOOBAR
+            text a010 FOOBAR
             
     find text <text>
         Find text data.  Use the textmap command to set a custom format for
