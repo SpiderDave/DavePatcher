@@ -8,11 +8,19 @@
 -- ToDo:
 --   * Clean up variable and function names
 --   * Clean up scope of variables
---   * Prefer "" quotes over ''
 --   * Add more asm set formats
 --   * Create example scripts
 --   * Better control over writing to rom
 --   * Create ips patches and other possible patch formats
+--   * Better control when importing and exporting graphics:
+--     + Export to image without overwriting image
+--     + Set palette for each tilemap
+--   * Allow comments and indentation everywhere
+--   * Rework repeat so the repeated lines are evaluated for each iteration, not once
+--   * Improve "find text" to include unknown characters
+--   * Improve "find" to include unknown bytes
+--   * Tilemap setting for precise placement or grid
+--   * Allow textmap to be flexible for characters with multiple codes
 
 -- Notes:
 --   * Keywords starting with _ are experimental or unfinished
@@ -34,10 +42,12 @@ math.randomseed(os.time ()) math.random() math.random() math.random()
 
 --local winapi = require("winapi")
 
+version = version or {stage="",date="?",time="?"}
+
 local patcher = {
     info = {
         name = "DavePatcher",
-        version = string.format("v%s", os.date("%Y.%m.%d")) ,
+        version = string.format("v%s%s", version.date, version.stage),
         author = "SpiderDave",
         url = "https://github.com/SpiderDave/DavePatcher"
     },
@@ -83,6 +93,9 @@ function patcher.getHeader(str)
     }
     
     if header.id~="NES"..string.byte(0x10) then header.valid=false end
+    
+    patcher.variables["CHRSTART"]=header.prg_rom_size*0x4000
+    patcher.variables["CHRSIZE"]=header.chr_rom_size*0x2000
     return header
 end
 
@@ -156,7 +169,7 @@ util.startsWith = startsWith
 util.toNumber = function(s, hint)
     local n
     s=util.trim(s)
-    if s=='_' then
+    if s=="_" then
         n=patcher.results[patcher.results.index].address
         patcher.results.index=patcher.results.index+1
     else
@@ -522,6 +535,7 @@ function util.split(s, delim, max)
   return t
 end
 
+patcher.help.extra = "\nSome commands require Lua-GD https://sourceforge.net/projects/lua-gd/\n"
 patcher.help.info = string.format("%s %s - %s %s",patcher.info.name,patcher.info.version,patcher.info.author,patcher.info.url)
 patcher.help.description = "A custom patcher for use with NES romhacking or general use."
 patcher.help.usage = [[
@@ -541,13 +555,13 @@ Lines starting with // are comments.
     
 You can also do a comment at the end of a line:
     
-    put 1234 a963 // set lives to 99
+    put 1200 a963 // set lives to 99
     
 When comments are stripped, it will remove up to one space before the // 
 automatically, so if you need whitespace in your command, add an extra 
 space before the // like so:
     
-    text 5678 FOOBAR  // set name to "FOOBAR "
+    text 3400 FOOBAR  // set name to "FOOBAR "
     
 Lines starting with # are "annotations"; Annotations are comments that are
 shown in the output when running the patcher.
@@ -577,11 +591,11 @@ of multiple words.  Possible keywords:
         (depreciated) same as get
     
     get asm <address> <len>
-        get <len> bytes of data at <address> and analyze using 6502 opcodes, 
+        get <len> bytes of data at <address> and analyze using 6502 opcodes,
         display formatted asm data.
     
     print asm <data>
-        analyze hexidecimal data <data> using 6502 opcodes, display formatted 
+        analyze hexidecimal data <data> using 6502 opcodes, display formatted
         asm data.
     
     put <address> <data>
@@ -607,7 +621,7 @@ of multiple words.  Possible keywords:
         specified in hexidecimal by <length>.
 
         Example:
-            copy hex a010 b010 0a
+            copy a010 b010 0a
             
     copy hex <address1> <address2> <length>
         (depreciated) same as copy
@@ -624,12 +638,15 @@ of multiple words.  Possible keywords:
         Example:
             find text FOOBAR
             
-    find hex <data>
+    find <data>
         Find data in hexidecimal.  The length of the data must be a multiple
         of 2.
         Example:
-            find hex 00ff1012
+            find 00ff1012
             
+    find hex <data>
+        (depreciated) same as find
+        
     textmap <characters> <map to>
         Map text characters to specific values.  These will be used in other
         commands like the "text" command.
@@ -643,7 +660,7 @@ of multiple words.  Possible keywords:
             
     skip
     ...
-    end
+    end skip
         skip this section.  You may put text after skip and end.
         Example:
         skip -------------
@@ -665,7 +682,7 @@ of multiple words.  Possible keywords:
         Set the starting address for commands
         Example:
             start 10200
-            find hex a901
+            find a901
             
     offset <address>
         Set the offset to use.  All addresses used and shown will be offset by
@@ -899,6 +916,11 @@ function err(text,...)
     quit("Error: "..text,...)
 end
 
+function warning(text,...)
+    if text then printf("Warning: "..text,...) end
+    -- Does not exit
+end
+
 function getfilecontents(path)
     local file = io.open(path,"rb")
     if file==nil then return nil end
@@ -927,9 +949,12 @@ function patch.load(file)
         end
         
         -- variable replacement
-        for k,v in pairs(patcher.variables) do
-            line = string.gsub(line, "%%"..k.."%%", v)
-        end
+--        for k,v in pairs(patcher.variables) do
+--            if type(v) == "number" then
+--                v = string.format("%x",v)
+--            end
+--            line = string.gsub(line, "%%"..k.."%%", v)
+--        end
         
         if util.trim(line or "") == "" then
             --ignore empty lines
@@ -942,16 +967,20 @@ function patch.load(file)
 end
 
 function patch.readLine()
-    patch.index = patch.index + 1
     if patch.index > # patch.lines then return nil end
 
     local line = patch.lines[patch.index]
+    line = util.ltrim(line)
     
     -- variable replacement
     for k,v in pairs(patcher.variables) do
+        if type(v) == "number" then
+            v = string.format("%x",v)
+        end
         line = string.gsub(line, "%%"..k.."%%", v)
     end
 
+    patch.index = patch.index + 1
 
     return line
 end
@@ -986,7 +1015,7 @@ function util.writeToFile(file,address, data)
 end
 
 function bin2hex(str)
-    local output=''
+    local output = ""
     for i = 1, #str do
         local c = string.byte(str:sub(i,i))
         output=output..string.format("%02x", c)
@@ -995,7 +1024,7 @@ function bin2hex(str)
 end
 
 function hex2bin(str)
-    local output=''
+    local output = ""
     for i = 1, (#str/2) do
         local c = str:sub(i*2-1,i*2)
         output=output..string.char(tonumber(c, 16))
@@ -1018,7 +1047,7 @@ function makepointer(addr,returnbinary)
     local a,p,pbin
     returnbinary=returnbinary or nil
     a=string.format("%08X",addr)
-    p=string.sub(a,7,8)..string.sub(a,5,6)..'4'..string.sub(a,4,4)..string.sub(a,1,2)
+    p=string.sub(a,7,8)..string.sub(a,5,6).."4"..string.sub(a,4,4)..string.sub(a,1,2)
     pbin=hex2bin(p)
     p=tonumber(p,16)
     if returnbinary then return pbin else return p end
@@ -1310,6 +1339,16 @@ function tileToImage2(tileMap, fileName)
     image:png(fileName)
 end
 
+
+if arg[1]=="-readme" then
+    if (util.writeToFile("README.md",0,"```\n"..patcher.help.info .."\n".. patcher.help.description .."\n\n"..patcher.help.extra.."\n\n".. patcher.help.commands.."\n```")) then
+        print("README updated")
+    else
+        quit("Error: README update failed.")
+    end
+    quit()
+end
+
 if arg[1]=="-commands" then
     print(patcher.help.info)
     print(patcher.help.description)
@@ -1361,7 +1400,6 @@ while true do
         line = patch.readLine()
     end
     if line == nil then break end
-    line = util.ltrim(line)
     local status, err = pcall(function()
     
     local keyword,data = unpack(util.split(line," ",1))
@@ -1373,10 +1411,10 @@ while true do
         printf("repeat %02x",patcher.lineQueue.r)
         while true do
             line = patch.readLine()
-            line = util.ltrim(line)
             keyword,data = unpack(util.split(line," ",1))
             keyword=keyword:lower()
-            if keyword == "end repeat" then break end
+            --if keyword == "end repeat" then break end
+            if startsWith(line, "end repeat") then break end
             patcher.lineQueue[#patcher.lineQueue+1]={line=line,keyword=keyword,data=data}
         end
     end
@@ -1394,7 +1432,7 @@ while true do
             if patcher.showAnnotations or patcher.verbose then
                 print(string.sub(line,1))
             end
-        elseif startsWith(line, '//') then
+        elseif startsWith(line, "//") then
             -- comment
         elseif startsWith(line, "verbose off") then
             patcher.verbose = false
@@ -1423,21 +1461,7 @@ while true do
             
             printf("Corrupting data at 0x%08x: %s --> %s",address, oldData, newData)
             if not writeToFile(patcher.fileName, address+patcher.offset,hex2bin(newData)) then err("Could not write to file.") end
---        elseif startsWith(line:lower(), '_smartsearch lives can_increase ') then
-            
---            local data = string.sub(line,33)
---            data = data:lower()
-            
---            if data:lower() == "true" then
---                patcher.smartSearch.lives_can_increase = true
---            elseif data == "false" then
---                patcher.smartSearch.lives_can_increase = false
---                print("test!!!!!!!!!!!!!!!!!!")
-                
---            else
---                err("unknown smartsearch parameter: '%s'.", data:lower())
---            end
-        elseif startsWith(line:lower(), '_smartsearch lives ') then
+        elseif startsWith(line:lower(), "_smartsearch lives ") then
             --search for a9xx8dyyyy (xx is given number of, yyyy is memory location we'll save for later)
             --search for ceyyyy for each result (ce is decrement, yyyy is the memory location we just found)
             --search for eeyyyy for each result (ce is increment, yyyy is the memory location we just found)
@@ -1461,7 +1485,7 @@ while true do
             elseif can_increase == "false" then
                 can_increase = false
             else
-                err("unknown smartsearch parameter: '%s'.", can_increase)
+                err('unknown smartsearch parameter: "%s".', can_increase)
             end
             
             printf("* * * Smart search * * *")
@@ -1520,38 +1544,16 @@ while true do
                 end
             end
             printf("")
-        elseif startsWith(line:lower(), "find hex ") then
-            local data=string.sub(line,10)
-            address=0
-            print(string.format("Find hex: %s",data))
-            data = util.stripSpaces(data)
-            patcher.results.clear()
+        --elseif startsWith(line:lower(), "replace hex ") then
+        elseif keyword == "replace" then
             
-            local nResults = 0
-            local limit = 50
-            while true do
-            --for i=1,50 do
-                --address = filedata:find(hex2bin(data),address+1+patcher.offset, true)
-                address = patcher.fileData:find(hex2bin(data),address+1+patcher.offset, true)
-                if address then
-                    if address>patcher.startAddress+patcher.offset then
-                        print(string.format("    %s Found at 0x%08x",data,address-1-patcher.offset))
-                        patcher.results[#patcher.results+1]={address=address-1-patcher.offset}
-                        nResults = nResults + 1
-                        if nResults >= limit then break end
-                    end
-                else
-                    break
-                end
+            if util.split(util.ltrim(data), " ",1)[1]=="hex" then
+                data = util.split(util.ltrim(data), " ",1)[2]
+                warning('depreciated keyword "replace hex". use "replace" instead')
             end
-            patcher.results.index = 1
-            if #patcher.results > 0 then
-                patcher.lastFound = patcher.results[1].address
-            else
-                patcher.lastFound = nil
-            end
-        elseif startsWith(line:lower(), "replace hex ") then
-            local data=string.sub(line,13)
+            data = util.ltrim(data)
+            
+            --local data=string.sub(line,13)
             local address=0
             local findValue = util.split(data," ")[1]
             local replaceValue = util.split(data," ")[2]
@@ -1587,19 +1589,6 @@ while true do
             else
                 patcher.lastFound = nil
             end
-        elseif startsWith(line:lower(), "get hex ") then
-            local data=string.sub(line,9)
-
-            local address = data:sub(1,(data:find(" ")))
-            address = tonumber(address, 16)
-            
-            local len = data:sub((data:find(" ")+1))
-            len = tonumber(len, 16)
-
-            local old=patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+len)
-            old=bin2hex(old)
-            
-            print(string.format("Hex data at 0x%08x: %s",address, old))
         elseif startsWith(line:lower(), "get asm ") then
             local data=string.sub(line,9)
 
@@ -1619,6 +1608,20 @@ while true do
             
             print(string.format("Analyzing ASM data:\n[%s]",hexData))
             print(asm.print(hexData))
+        elseif startsWith(line:lower(), "get hex ") then
+            warning('depreciated keyword "get hex". use "get" instead')
+            local data=string.sub(line,9)
+
+            local address = data:sub(1,(data:find(" ")))
+            address = tonumber(address, 16)
+            
+            local len = data:sub((data:find(" ")+1))
+            len = tonumber(len, 16)
+
+            local old=patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+len)
+            old=bin2hex(old)
+            
+            print(string.format("Hex data at 0x%08x: %s",address, old))
         elseif keyword == "get" then
             local data=string.sub(line,5)
 
@@ -1660,26 +1663,63 @@ while true do
             --old=bin2hex(old)
             
             print(string.format("Hex data at 0x%08x: %s",address,mapText(old,true)))
-        elseif keyword == "fontdata" then
+        --elseif startsWith(line:lower(), "find hex ") then
+        elseif keyword == "find" then
+            if util.split(util.ltrim(data), " ",1)[1]=="hex" then
+                data = util.split(util.ltrim(data), " ",1)[2]
+                warning('depreciated keyword "find hex". use "find" instead')
+            end
+            
+            address=0
+            print(string.format("Find hex: %s",data))
+            data = util.stripSpaces(data)
+            patcher.results.clear()
+            
+            local nResults = 0
+            local limit = 50
+            while true do
+            --for i=1,50 do
+                --address = filedata:find(hex2bin(data),address+1+patcher.offset, true)
+                address = patcher.fileData:find(hex2bin(data),address+1+patcher.offset, true)
+                if address then
+                    if address>patcher.startAddress+patcher.offset then
+                        print(string.format("    %s Found at 0x%08x",data,address-1-patcher.offset))
+                        patcher.results[#patcher.results+1]={address=address-1-patcher.offset}
+                        nResults = nResults + 1
+                        if nResults >= limit then break end
+                    end
+                else
+                    break
+                end
+            end
+            patcher.results.index = 1
+            if #patcher.results > 0 then
+                patcher.lastFound = patcher.results[1].address
+            else
+                patcher.lastFound = nil
+            end
+        --elseif keyword == "fontdata" then
             --local font = {"33":[0,0,0,0,0,8,8,8,8,8,0,8,0,0,0,0],"34":[0,0,0,0,0,20,20,0,0,0,0,0,0,0,0,0],"35":[0,0,0,0,0,0,40,124,40,40,124,40,0,0,0,0],"36":[0,0,0,0,16,56,84,20,56,80,84,56,16,0,0,0],"37":[0,0,0,0,0,264,148,72,32,144,328,132,0,0,0,0],"38":[0,0,0,0,0,48,72,48,168,68,196,312,0,0,0,0],"39":[0,0,0,0,0,8,8,0,0,0,0,0,0,0,0,0],"40":[0,0,0,0,0,8,4,4,4,4,4,8,0,0,0,0],"41":[0,0,0,0,0,4,8,8,8,8,8,4,0,0,0,0],"42":[0,0,0,0,32,168,112,428,112,168,32,0,0,0,0,0],"43":[0,0,0,0,0,0,16,16,124,16,16,0,0,0,0,0],"44":[0,0,0,0,0,0,0,0,0,0,24,24,16,8,0,0],"45":[0,0,0,0,0,0,0,0,60,0,0,0,0,0,0,0],"46":[0,0,0,0,0,0,0,0,0,0,24,24,0,0,0,0],"47":[0,0,0,0,0,16,16,8,8,8,4,4,0,0,0,0],"48":[0,0,0,0,0,24,36,36,36,36,36,24,0,0,0,0],"49":[0,0,0,0,0,8,8,8,8,8,8,8,0,0,0,0],"50":[0,0,0,0,0,24,36,32,16,8,4,60,0,0,0,0],"51":[0,0,0,0,0,24,36,32,24,32,36,24,0,0,0,0],"52":[0,0,0,0,0,32,36,36,60,32,32,32,0,0,0,0],"53":[0,0,0,0,0,60,4,4,24,32,36,24,0,0,0,0],"54":[0,0,0,0,0,24,36,4,28,36,36,24,0,0,0,0],"55":[0,0,0,0,0,60,32,32,16,8,8,8,0,0,0,0],"56":[0,0,0,0,0,24,36,36,24,36,36,24,0,0,0,0],"57":[0,0,0,0,0,24,36,36,56,32,36,24,0,0,0,0],"58":[0,0,0,0,0,0,24,24,0,0,24,24,0,0,0,0],"59":[0,0,0,0,0,0,24,24,0,0,24,24,16,8,0,0],"60":[0,0,0,0,0,32,16,8,4,8,16,32,0,0,0,0],"61":[0,0,0,0,0,0,0,60,0,0,60,0,0,0,0,0],"62":[0,0,0,0,0,4,8,16,32,16,8,4,0,0,0,0],"63":[0,0,0,0,0,24,36,32,16,8,0,8,0,0,0,0],"64":[0,0,0,0,240,264,612,660,660,484,8,240,0,0,0,0],"65":[0,0,0,0,0,24,36,36,60,36,36,36,0,0,0,0],"66":[0,0,0,0,0,28,36,36,28,36,36,28,0,0,0,0],"67":[0,0,0,0,0,24,36,4,4,4,36,24,0,0,0,0],"68":[0,0,0,0,0,28,36,36,36,36,36,28,0,0,0,0],"69":[0,0,0,0,0,60,4,4,28,4,4,60,0,0,0,0],"70":[0,0,0,0,0,60,4,4,28,4,4,4,0,0,0,0],"71":[0,0,0,0,0,24,36,4,52,36,36,24,0,0,0,0],"72":[0,0,0,0,0,36,36,36,60,36,36,36,0,0,0,0],"73":[0,0,0,0,0,28,8,8,8,8,8,28,0,0,0,0],"74":[0,0,0,0,0,60,16,16,16,20,20,8,0,0,0,0],"75":[0,0,0,0,0,36,36,20,12,20,36,36,0,0,0,0],"76":[0,0,0,0,0,4,4,4,4,4,4,60,0,0,0,0],"77":[0,0,0,0,0,68,68,108,84,84,68,68,0,0,0,0],"78":[0,0,0,0,0,68,76,84,84,84,100,68,0,0,0,0],"79":[0,0,0,0,0,24,36,36,36,36,36,24,0,0,0,0],"80":[0,0,0,0,0,28,36,36,28,4,4,4,0,0,0,0],"81":[0,0,0,0,0,24,36,36,36,52,36,88,0,0,0,0],"82":[0,0,0,0,0,28,36,36,28,36,36,36,0,0,0,0],"83":[0,0,0,0,0,24,36,4,24,32,36,24,0,0,0,0],"84":[0,0,0,0,0,124,16,16,16,16,16,16,0,0,0,0],"85":[0,0,0,0,0,36,36,36,36,36,36,24,0,0,0,0],"86":[0,0,0,0,0,68,68,68,68,40,40,16,0,0,0,0],"87":[0,0,0,0,0,84,84,84,84,84,56,40,0,0,0,0],"88":[0,0,0,0,0,68,68,40,16,40,68,68,0,0,0,0],"89":[0,0,0,0,0,68,68,40,16,16,16,16,0,0,0,0],"90":[0,0,0,0,0,60,32,16,16,8,4,60,0,0,0,0],"91":[0,0,0,0,0,28,4,4,4,4,4,28,0,0,0,0],"92":[0,0,0,0,0,4,4,8,8,8,16,16,0,0,0,0],"93":[0,0,0,0,0,28,16,16,16,16,16,28,0,0,0,0],"94":[0,0,0,0,0,24,36,0,0,0,0,0,0,0,0,0],"95":[0,0,0,0,0,0,0,0,0,0,0,0,508,0,0,0],"96":[0,0,0,0,0,4,8,0,0,0,0,0,0,0,0,0],"97":[0,0,0,0,0,0,0,24,32,56,36,88,0,0,0,0],"98":[0,0,0,0,0,0,4,4,28,36,36,28,0,0,0,0],"99":[0,0,0,0,0,0,0,0,24,4,4,24,0,0,0,0],"100":[0,0,0,0,0,0,32,32,56,36,36,88,0,0,0,0],"101":[0,0,0,0,0,0,0,24,36,28,4,56,0,0,0,0],"102":[0,0,0,0,0,0,48,8,8,28,8,8,0,0,0,0],"103":[0,0,0,0,0,0,0,0,88,36,36,56,32,36,24,0],"104":[0,0,0,0,0,0,4,4,4,28,36,36,0,0,0,0],"105":[0,0,0,0,0,0,8,0,12,8,8,8,0,0,0,0],"106":[0,0,0,0,0,0,0,16,0,24,16,16,16,12,0,0],"107":[0,0,0,0,0,0,0,4,20,12,20,20,0,0,0,0],"108":[0,0,0,0,0,0,4,4,4,4,4,8,0,0,0,0],"109":[0,0,0,0,0,0,0,0,4,88,168,168,0,0,0,0],"110":[0,0,0,0,0,0,0,0,4,28,36,36,0,0,0,0],"111":[0,0,0,0,0,0,0,0,24,36,36,24,0,0,0,0],"112":[0,0,0,0,0,0,0,4,56,72,72,56,8,8,8,0],"113":[0,0,0,0,0,0,0,0,88,36,36,56,32,32,64,0],"114":[0,0,0,0,0,0,0,0,52,72,8,8,0,0,0,0],"115":[0,0,0,0,0,0,0,24,4,24,32,24,0,0,0,0],"116":[0,0,0,0,0,0,8,8,28,8,8,16,0,0,0,0],"117":[0,0,0,0,0,0,0,0,36,36,36,88,0,0,0,0],"118":[0,0,0,0,0,0,0,0,68,68,40,16,0,0,0,0],"119":[0,0,0,0,0,0,0,0,84,84,84,40,0,0,0,0],"120":[0,0,0,0,0,0,0,0,36,24,24,36,0,0,0,0],"121":[0,0,0,0,0,0,0,0,36,36,36,56,32,36,24,0],"122":[0,0,0,0,0,0,0,0,60,16,8,60,0,0,0,0],"123":[0,0,0,16,8,8,8,4,8,8,8,16,0,0,0,0],"124":[0,0,0,8,8,8,8,8,8,8,8,8,0,0,0,0],"125":[0,0,0,4,8,8,8,16,8,8,8,4,0,0,0,0],"126":[0,0,0,0,0,0,0,24,292,192,0,0,0,0,0,0],"161":[0,0,0,0,0,8,0,8,8,8,8,8,0,0,0,0],"162":[0,0,0,0,0,0,16,56,20,20,56,16,0,0,0,0],"163":[0,0,0,0,0,48,8,8,28,8,8,60,0,0,0,0],"164":[0,0,0,0,0,0,132,120,72,72,120,132,0,0,0,0],"165":[0,0,0,0,68,40,16,56,16,56,16,16,0,0,0,0],"166":[0,0,0,8,8,8,8,0,8,8,8,8,0,0,0,0],"167":[0,0,0,0,0,0,48,72,8,48,72,72,48,64,72,48],"168":[0,0,0,0,0,108,108,0,0,0,0,0,0,0,0,0],"169":[0,0,0,0,240,264,612,532,532,612,264,240,0,0,0,0],"8364":[0,0,0,0,0,112,8,60,8,60,8,112,0,0,0,0],"name":"SlightlyFancyPix","copy":"SpiderDave","letterspace":"64","basefont_size":"512","basefont_left":"62","basefont_top":"0","basefont":"Arial","basefont2":""}
-        elseif startsWith(line, 'export map ') then
+        elseif startsWith(line, "export map ") then
             if not gd then
                 err("could not use export command because gd did not load.")
             end
             local dummy, dummy, tileMap, fileName=unpack(util.split(line," ",3))
             printf("exporting tile map %s to %s",tileMap, fileName)
             tileToImage2(tileMap, fileName)
-        elseif startsWith(line, 'export ') then
+        elseif startsWith(line, "export ") then
             if not gd then
                 err("could not use export command because gd did not load.")
             end
             local dummy, address,len,fileName=unpack(util.split(line," ",3))
+            if not address then err("missing export address") end
+            if not len then err("missing export length") end
+            if not fileName then err("missing export fileName") end
             address=tonumber(address,16)
             len=tonumber(len,16)*16
+            print(string.format("exporting tile data at 0x%08x",address))
             
             tileData = patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+len)
-            
-            print(string.format("exporting tile data at 0x%08x",address))
             printVerbose(bin2hex(tileData))
             tileToImage(tileData, fileName)
         elseif startsWith(line, "import map ") then
@@ -1840,16 +1880,17 @@ while true do
                 end
             end
         elseif keyword == "hex" or keyword == "put" then
+            warning('depreciated keyword "hex". use "put" instead')
             local address = data:sub(1,(data:find(" ")))
             --address = tonumber(address, 16)
             address = util.toNumber(address)
-            txt=data:sub((data:find(" ")+1))
-            txt = util.stripSpaces(txt)
+            local newData=data:sub((data:find(" ")+1))
+            newData = util.stripSpaces(newData)
             
-            old=patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+#txt/2)
+            old=patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+#newData/2)
             old=bin2hex(old)
-            printf("Setting bytes: 0x%08x: %s --> %s",address,old, txt)
-            if not writeToFile(patcher.fileName, address+patcher.offset,hex2bin(txt)) then err("Could not write to file.") end
+            printf("Setting bytes: 0x%08x: %s --> %s",address,old, newData)
+            if not writeToFile(patcher.fileName, address+patcher.offset,hex2bin(newData)) then err("Could not write to file.") end
         elseif keyword == "fill" then
             address = util.toNumber(util.split(data, " ", 1)[1])
             data = util.split(data, " ", 1)[2]
@@ -1926,6 +1967,7 @@ while true do
             end
             
         elseif startsWith(line, "copy hex ") then
+            warning('depreciated keyword "copy hex". use "copy" instead')
             local data=string.sub(line,10)
             local address = data:sub(1,(data:find(" ")))
             data = data:sub((data:find(" ")+1))
@@ -1938,7 +1980,7 @@ while true do
             data = patcher.fileData:sub(address+1+patcher.offset,address+1+patcher.offset+l-1)
             print(string.format("Copying 0x%08x bytes from 0x%08x to 0x%08x",l, address, address2))
             if not writeToFile(patcher.fileName, address2+patcher.offset,data) then err("Could not write to file.") end
-        elseif startsWith(line, 'copy ') then
+        elseif startsWith(line, "copy ") then
             local data=string.sub(line,6)
             local address = data:sub(1,(data:find(" ")))
             data = data:sub((data:find(" ")+1))
@@ -1960,6 +2002,8 @@ while true do
         elseif line=="header" then
             local header = patcher.getHeader()
             print(string.format("\niNES header data:\nid: %s\nPRG ROM: %02x x 4000\nCHR ROM: %02x x 2000\n\n",header.id,header.prg_rom_size,header.chr_rom_size))
+        elseif keyword=="header" then
+            print("header")
         elseif line=="_test" then
             for i=0,255-26 do
                 local out = "textmap ABCDEFGHIJKLMNOPQRSTUVWXYZ "
@@ -2004,6 +2048,7 @@ while true do
                     patcher.colors[i]=tonumber(string.sub(data,i*2+1,i*2+2),16)
                     --print(patcher.colors[i])
                 end
+                patcher.variables["PALETTE"] = string.format("%02x%02x%02x%02x", patcher.colors[0],patcher.colors[1],patcher.colors[2],patcher.colors[3])
             else
                 err("bad palette string length")
             end
@@ -2026,7 +2071,7 @@ while true do
                     if diff.count>patcher.diffMax then break end
                 end
             end
-        elseif startsWith(line, 'ips ') then
+        elseif startsWith(line, "ips ") then
             local ips = {}
             ips.n=string.sub(line,5)
             print("Applying ips patch: "..ips.n)
@@ -2091,8 +2136,7 @@ while true do
                 err("bad or missing readme parameter.")
             end
             -- Throw in a little extra info here
-            txt = "\nSome commands require Lua-GD https://sourceforge.net/projects/lua-gd/\n"
-            if (writeToFile("README.md",0,'```\n'..patcher.help.info ..'\n'.. patcher.help.description ..'\n'..txt.."\n".. patcher.help.commands..'\n```')) then
+            if (writeToFile("README.md",0,"```\n"..patcher.help.info .."\n".. patcher.help.description .."\n\n"..patcher.help.extra.."\n\n".. patcher.help.commands.."\n```")) then
                 print("README updated")
             else
                 quit("Error: README update failed.")

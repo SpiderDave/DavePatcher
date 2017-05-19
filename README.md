@@ -1,8 +1,10 @@
 ```
-DavePatcher v2017.05.09 - SpiderDave https://github.com/SpiderDave/DavePatcher
+DavePatcher v2017.05.19 - SpiderDave https://github.com/SpiderDave/DavePatcher
 A custom patcher for use with NES romhacking or general use.
 
+
 Some commands require Lua-GD https://sourceforge.net/projects/lua-gd/
+
 
 Lines starting with // are comments.
     
@@ -10,13 +12,13 @@ Lines starting with // are comments.
     
 You can also do a comment at the end of a line:
     
-    put 1234 a963 // set lives to 99
+    put 1200 a963 // set lives to 99
     
 When comments are stripped, it will remove up to one space before the // 
 automatically, so if you need whitespace in your command, add an extra 
 space before the // like so:
     
-    text 5678 FOOBAR  // set name to "FOOBAR "
+    text 3400 FOOBAR  // set name to "FOOBAR "
     
 Lines starting with # are "annotations"; Annotations are comments that are
 shown in the output when running the patcher.
@@ -46,11 +48,11 @@ of multiple words.  Possible keywords:
         (depreciated) same as get
     
     get asm <address> <len>
-        get <len> bytes of data at <address> and analyze using 6502 opcodes, 
+        get <len> bytes of data at <address> and analyze using 6502 opcodes,
         display formatted asm data.
     
     print asm <data>
-        analyze hexidecimal data <data> using 6502 opcodes, display formatted 
+        analyze hexidecimal data <data> using 6502 opcodes, display formatted
         asm data.
     
     put <address> <data>
@@ -76,7 +78,7 @@ of multiple words.  Possible keywords:
         specified in hexidecimal by <length>.
 
         Example:
-            copy hex a010 b010 0a
+            copy a010 b010 0a
             
     copy hex <address1> <address2> <length>
         (depreciated) same as copy
@@ -93,12 +95,15 @@ of multiple words.  Possible keywords:
         Example:
             find text FOOBAR
             
-    find hex <data>
+    find <data>
         Find data in hexidecimal.  The length of the data must be a multiple
         of 2.
         Example:
-            find hex 00ff1012
+            find 00ff1012
             
+    find hex <data>
+        (depreciated) same as find
+        
     textmap <characters> <map to>
         Map text characters to specific values.  These will be used in other
         commands like the "text" command.
@@ -112,7 +117,7 @@ of multiple words.  Possible keywords:
             
     skip
     ...
-    end
+    end skip
         skip this section.  You may put text after skip and end.
         Example:
         skip -------------
@@ -134,7 +139,7 @@ of multiple words.  Possible keywords:
         Set the starting address for commands
         Example:
             start 10200
-            find hex a901
+            find a901
             
     offset <address>
         Set the offset to use.  All addresses used and shown will be offset by
