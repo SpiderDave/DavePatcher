@@ -21,6 +21,12 @@
 --   * Improve "find" to include unknown bytes
 --   * Tilemap setting for precise placement or grid
 --   * Allow textmap to be flexible for characters with multiple codes
+--   * search for locations of tiles using images
+--   * create gg codes
+--   * comment code better
+--   * test/handle writes and reads outside length of file
+--   * allow patch addresses like 02:1200
+--   * allow variable assignment to use strings with spaces in them
 
 -- Notes:
 --   * Keywords starting with _ are experimental or unfinished
@@ -68,9 +74,10 @@ local patcher = {
     base = 16,
     smartSearch={},
     variables = {},
+    autoRefresh = false,
+    outputFileName = "output.nes",
+    strict=false,
 }
-
-local patch = {}
 
 function patcher.getHeader(str)
     local str = str or patcher.fileData:sub(1,16)
@@ -539,7 +546,7 @@ patcher.help.extra = "\nSome commands require Lua-GD https://sourceforge.net/pro
 patcher.help.info = string.format("%s %s - %s %s",patcher.info.name,patcher.info.version,patcher.info.author,patcher.info.url)
 patcher.help.description = "A custom patcher for use with NES romhacking or general use."
 patcher.help.usage = [[
-Usage: davepatcher [options...] <patch file> <file to patch>
+Usage: davepatcher [options...] <patch file> [<file to patch>]
        davepatcher [options...] -i <file to patch>
 
 Options:
@@ -585,17 +592,26 @@ of multiple words.  Possible keywords:
     commands
         Show this help.  May be useful in interactive mode.
         
+    load <file>
+        Loads <file> and refreshes the data.
+    
+    file <file>
+        Changes the file but does not refresh the data.
+    
+    outputfile <file>
+        Sets the output file.  If not set, defaults to output.nes.
+        
     get <address> <len>
-        display <len> bytes of data at <address>
+        Display <len> bytes of data at <address>
     get hex <address> <len>
         (depreciated) same as get
     
     get asm <address> <len>
-        get <len> bytes of data at <address> and analyze using 6502 opcodes,
+        Get <len> bytes of data at <address> and analyze using 6502 opcodes,
         display formatted asm data.
     
     print asm <data>
-        analyze hexidecimal data <data> using 6502 opcodes, display formatted
+        Analyze hexidecimal data <data> using 6502 opcodes, display formatted
         asm data.
     
     put <address> <data>
@@ -741,7 +757,7 @@ of multiple words.  Possible keywords:
             b0 0 3 h
             b1 1 3 h
             b2 2 3 h
-            end
+            end tilemap
 
     export map <tilemap> <file>
         export tile data to png file using a tile map.
@@ -762,6 +778,13 @@ of multiple words.  Possible keywords:
     refresh
         refreshes the data so that keywords like "find text" will use the new
         altered data.
+    
+    refresh auto
+        automatically refresh the data after each change.
+    
+    refresh manual
+        do not automatically refresh the data after each change.  Use "refresh"
+        command manually.
         
     code
         Execute Lua code
@@ -789,7 +812,8 @@ of multiple words.  Possible keywords:
     
     var <var name> = <string>
         A basic variable assignment.  Currently you can only assign a string
-        value.
+        value.  You may also do variable assignment without using "var" if
+        not in strict mode.
     
     if <var>==<string>
     ...
@@ -799,11 +823,21 @@ of multiple words.  Possible keywords:
         A basic if,else,end if block.  "else" is optional, and it's very 
         limited.  Can not be nested currently, only comparison with string
         is supported.
+    
+    include <file>
+        include another patch file as if it were inserted at this line.
+    
+    strict [on | off]
+        Turn strict mode on or off.  If strict is used without a parameter, on is
+        assumed.  In strict mode:
+        * "var" keyword is required for variable assignment.
+        * break on all warnings.
+
 ]]
 
-printVerbose = function(txt)
+printVerbose = function(s, ...)
     if patcher.verbose then
-        print(txt)
+        return print(s:format(...))
     end
 end
 
@@ -918,7 +952,10 @@ end
 
 function warning(text,...)
     if text then printf("Warning: "..text,...) end
-    -- Does not exit
+    -- Does not exit unless strict mode
+    if patcher.strict ==true then
+        os.exit()
+    end
 end
 
 function getfilecontents(path)
@@ -933,12 +970,14 @@ end
 local patch = {
     file = "patch.txt",
     index = 1,
+    includeCount = 0,
+    includeLimit = 20,
 }
 
 function patch.load(file)
     local lines = {}
     file = file or patch.file
-    for line in io.lines(file) do 
+    for line in io.lines(file) do
         if string.find(line," //") then
             -- remove comments with a space before them
             line = string.sub(line, 1, string.find(line," //") -1)
@@ -958,6 +997,16 @@ function patch.load(file)
         
         if util.trim(line or "") == "" then
             --ignore empty lines
+        elseif util.split(line," ",1)[1] == "include" then
+            patch.includeCount = patch.includeCount + 1
+            if patch.includeCount > patch.includeLimit then
+                err("patch include limit exceeded.")
+            end
+            local f = util.split(line," ",1)[2]
+            local l = patch.load(f)
+            for i = 1,#l do
+                lines[#lines + 1] = l[i]
+            end
         else
             lines[#lines + 1] = line
         end
@@ -998,6 +1047,14 @@ end
 function util.fileExists(name)
    local f=io.open(name,"r")
    if f~=nil then io.close(f) return true else return false end
+end
+
+-- Write data to patcher.newFileData
+function patcher.write(address, data)
+    patcher.newFileData = patcher.newFileData:sub(1,address) .. data .. patcher.newFileData:sub(address+#data+1)
+    if patcher.autoRefresh == true then
+        patcher.fileData = patcher.newFileData
+    end
 end
 
 function util.writeToFile(file,address, data)
@@ -1363,13 +1420,19 @@ if arg[1]=="-?" or arg[1]=="/?" or arg[1]=="/help" or arg[1]=="/h" or arg[1]=="-
     quit()
 end
 
-file=arg[2]
-patcher.fileName = arg[2]
-if not arg[1] or not arg[2] or arg[3] then
+if not arg[1] or arg[3] then
     print(patcher.help.info)
     print(patcher.help.description)
     print(patcher.help.usage)
     quit()
+end
+
+if arg[2] then
+    patcher.fileName = arg[2]
+    printVerbose(string.format("file: %s",patcher.fileName))
+    patcher.fileData = getfilecontents(patcher.fileName)
+    patcher.newFileData = patcher.fileData
+    patcher.header = patcher.getHeader()
 end
 
 if arg[1] == "-i" then
@@ -1378,12 +1441,7 @@ if arg[1] == "-i" then
     print(patcher.help.interactive)
 end
 
-printVerbose(string.format("file: %s",patcher.fileName))
-
 file_dumptext = nil
-patcher.fileData = getfilecontents(patcher.fileName)
-
-patcher.header = patcher.getHeader()
 
 if not patcher.interactive==true then
     patch.load(arg[1] or "patch.txt")
@@ -1402,8 +1460,22 @@ while true do
     if line == nil then break end
     local status, err = pcall(function()
     
-    local keyword,data = unpack(util.split(line," ",1))
+    local keyword, data = unpack(util.split(line," ",1))
+    local assignment = false
+    
     keyword=keyword:lower()
+    
+    if #util.split(line, "=",1)>1  then
+        local k, d = unpack(util.split(line,"=",1))
+        k = util.trim(k)
+        if #util.split(k, " ",1)==1 then
+            keyword = k
+            data = d
+            assignment = true
+        end
+    end
+    
+    
     
     patcher.lineQueue={}
     if keyword == "repeat" then
@@ -1440,6 +1512,17 @@ while true do
         elseif startsWith(line, "verbose on") or line == "verbose" then
             patcher.verbose = true
             print("verbose on")
+        elseif keyword == "strict" then
+            data = util.trim(data or "on")
+            if data == "on" or data == "" then
+                patcher.strict = true
+                print("strict mode on")
+            elseif data == "off" then
+                patcher.strict = false
+                print("strict mode off")
+            else
+                err("invalid strict mode %s",data)
+            end
         elseif keyword == "test" then
             print("")
             local lines = patch.load("patch.txt")
@@ -1460,7 +1543,8 @@ while true do
             local newData = bin2hex(string.char(util.random(255)))
             
             printf("Corrupting data at 0x%08x: %s --> %s",address, oldData, newData)
-            if not writeToFile(patcher.fileName, address+patcher.offset,hex2bin(newData)) then err("Could not write to file.") end
+            patcher.write(address+patcher.offset,hex2bin(newData))
+            --if not writeToFile(patcher.fileName, address+patcher.offset,hex2bin(newData)) then err("Could not write to file.") end
         elseif startsWith(line:lower(), "_smartsearch lives ") then
             --search for a9xx8dyyyy (xx is given number of, yyyy is memory location we'll save for later)
             --search for ceyyyy for each result (ce is decrement, yyyy is the memory location we just found)
@@ -1569,12 +1653,12 @@ while true do
             
             while true do
             --for i=1,50 do
-                --address = filedata:find(hex2bin(data),address+1+patcher.offset, true)
                 address = patcher.fileData:find(hex2bin(findValue),address+1+patcher.offset, true)
                 if address then
                     if address>patcher.startAddress+patcher.offset then
                         print(string.format("    %s Found at 0x%08x, replacing with %s",findValue,address-1-patcher.offset,replaceValue))
-                        if not writeToFile(patcher.fileName, address-1,hex2bin(replaceValue)) then err("Could not write to file.") end
+                        patcher.write(address-1,hex2bin(replaceValue))
+                        --if not writeToFile(patcher.fileName, address-1,hex2bin(replaceValue)) then err("Could not write to file.") end
                         patcher.results[#patcher.results+1]={address=address-1-patcher.offset}
                         nResults = nResults + 1
                         if nResults >= limit then break end
@@ -1679,7 +1763,6 @@ while true do
             local limit = 50
             while true do
             --for i=1,50 do
-                --address = filedata:find(hex2bin(data),address+1+patcher.offset, true)
                 address = patcher.fileData:find(hex2bin(data),address+1+patcher.offset, true)
                 if address then
                     if address>patcher.startAddress+patcher.offset then
@@ -1736,7 +1819,8 @@ while true do
             local address,td
             for i=1,#tileData do
                 address,td=tileData[i].address, tileData[i].t
-                if not writeToFile(patcher.fileName, address+patcher.offset,td) then err("Could not write to file.") end
+                patcher.write(address+patcher.offset,td)
+                --if not writeToFile(patcher.fileName, address+patcher.offset,td) then err("Could not write to file.") end
             end
             
             --if not writeToFile(patcher.fileName, address+patcher.offset,tileData) then err("Could not write to file.") end
@@ -1751,7 +1835,8 @@ while true do
             print(string.format("importing tile at 0x%08x",address))
             local tileData = imageToTile(len, fileName)
             
-            if not writeToFile(patcher.fileName, address+patcher.offset,tileData) then err("Could not write to file.") end
+            patcher.write(address+patcher.offset,tileData)
+            --if not writeToFile(patcher.fileName, address+patcher.offset,tileData) then err("Could not write to file.") end
         elseif startsWith(line, "goto ") then
             local label = util.trim(string.sub(line,6))
             patch.index = 1
@@ -1866,7 +1951,8 @@ while true do
             
             txt=mapText(txt)
             
-            if not writeToFile(patcher.fileName, address+patcher.offset,txt) then err("Could not write to file.") end
+            patcher.write(address+patcher.offset,txt)
+            --if not writeToFile(patcher.fileName, address+patcher.offset,txt) then err("Could not write to file.") end
         elseif keyword == "textmap" then
             local mapOld = data:sub(1,(data:find(" ")-1))
             local mapNew = data:sub((data:find(" ")+1))
@@ -1880,7 +1966,9 @@ while true do
                 end
             end
         elseif keyword == "hex" or keyword == "put" then
-            warning('depreciated keyword "hex". use "put" instead')
+            if keyword == "hex" then
+                warning('depreciated keyword "hex". use "put" instead')
+            end
             local address = data:sub(1,(data:find(" ")))
             --address = tonumber(address, 16)
             address = util.toNumber(address)
@@ -1890,7 +1978,8 @@ while true do
             old=patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+#newData/2)
             old=bin2hex(old)
             printf("Setting bytes: 0x%08x: %s --> %s",address,old, newData)
-            if not writeToFile(patcher.fileName, address+patcher.offset,hex2bin(newData)) then err("Could not write to file.") end
+            patcher.write(address+patcher.offset,hex2bin(newData))
+            --if not writeToFile(patcher.fileName, address+patcher.offset,hex2bin(newData)) then err("Could not write to file.") end
         elseif keyword == "fill" then
             address = util.toNumber(util.split(data, " ", 1)[1])
             data = util.split(data, " ", 1)[2]
@@ -1900,7 +1989,8 @@ while true do
             
             local newData = string.rep(fillString, fillCount)
             printVerbose("Fill data: 0x%08x: %s",address, newData)
-            if not writeToFile(patcher.fileName, address+patcher.offset,hex2bin(newData)) then err("Could not write to file.") end
+            patcher.write(address+patcher.offset,hex2bin(newData))
+            --if not writeToFile(patcher.fileName, address+patcher.offset,hex2bin(newData)) then err("Could not write to file.") end
         elseif keyword == "gg" then
             local gg=data:upper()
             gg=util.split(data," ",1)[1] -- Let's allow stuff after the code for descriptions, etc.  figure out a better comment system later.
@@ -1955,12 +2045,14 @@ while true do
                     local b=patcher.fileData:sub(address+patcher.offset+1,address+patcher.offset+1):byte()
                     if c == b then
                         printf("    %04x",address)
-                        if not writeToFile(patcher.fileName, address+patcher.offset,string.char(v)) then err("Could not write to file.") end
+                        patcher.write(address+patcher.offset,string.char(v))
+                        --if not writeToFile(patcher.fileName, address+patcher.offset,string.char(v)) then err("Could not write to file.") end
                     end
                     --printf("%04x %02x %02x",address+patcher.offset,b,c)
                 else
                     printf("    %04x",address)
-                    if not writeToFile(patcher.fileName, address+patcher.offset,string.char(v)) then err("Could not write to file.") end
+                    patcher.write(address+patcher.offset,string.char(v))
+                    --if not writeToFile(patcher.fileName, address+patcher.offset,string.char(v)) then err("Could not write to file.") end
                 end
                 address=address+ 0x2000
                 if address > #patcher.fileData or address>=0x20000 then break end
@@ -1979,7 +2071,8 @@ while true do
             l = tonumber(l, 16)
             data = patcher.fileData:sub(address+1+patcher.offset,address+1+patcher.offset+l-1)
             print(string.format("Copying 0x%08x bytes from 0x%08x to 0x%08x",l, address, address2))
-            if not writeToFile(patcher.fileName, address2+patcher.offset,data) then err("Could not write to file.") end
+            patcher.write(address2+patcher.offset,data)
+            --if not writeToFile(patcher.fileName, address2+patcher.offset,data) then err("Could not write to file.") end
         elseif startsWith(line, "copy ") then
             local data=string.sub(line,6)
             local address = data:sub(1,(data:find(" ")))
@@ -1992,18 +2085,23 @@ while true do
             l = tonumber(l, 16)
             data = patcher.fileData:sub(address+1+patcher.offset,address+1+patcher.offset+l-1)
             print(string.format("Copying 0x%08x bytes from 0x%08x to 0x%08x",l, address, address2))
-            if not writeToFile(patcher.fileName, address2+patcher.offset,data) then err("Could not write to file.") end
+            patcher.write(address2+patcher.offset,data)
+            --if not writeToFile(patcher.fileName, address2+patcher.offset,data) then err("Could not write to file.") end
         elseif line=="break" or line == "quit" or line == "exit" then
             print("[break]")
             --break
             breakLoop=true
-        elseif line=="refresh" then
-            patcher.fileData=getfilecontents(patcher.fileName)
+        elseif keyword=="refresh" then
+            if data == "auto" then
+                patcher.autoRefresh = true
+            elseif data == "manual" then
+                patcher.autoRefresh = false
+            else
+                patcher.fileData = patcher.newFileData
+            end
         elseif line=="header" then
             local header = patcher.getHeader()
             print(string.format("\niNES header data:\nid: %s\nPRG ROM: %02x x 4000\nCHR ROM: %02x x 2000\n\n",header.id,header.prg_rom_size,header.chr_rom_size))
-        elseif keyword=="header" then
-            print("header")
         elseif line=="_test" then
             for i=0,255-26 do
                 local out = "textmap ABCDEFGHIJKLMNOPQRSTUVWXYZ "
@@ -2018,11 +2116,21 @@ while true do
             end
             
         elseif line=="write all" then
-            if not writeToFile(patcher.fileName, patcher.offset,patcher.fileData) then err("Could not write to file.") end
+            --if not writeToFile(patcher.fileName, patcher.offset,patcher.fileData) then err("Could not write to file.") end
         elseif keyword=="file" then
             patcher.fileName = data
             file = data
             printf("File: %s",patcher.fileName)
+            --patcher.fileData=getfilecontents(patcher.fileName)
+        elseif keyword=="load" then
+            patcher.fileName = data
+            printf("Loading file: %s",patcher.fileName)
+            patcher.fileData = getfilecontents(patcher.fileName)
+            patcher.newFileData = patcher.fileData
+            patcher.header = patcher.getHeader()
+        elseif keyword=="outputfile" then
+            patcher.outputFileName = data
+            printf("Output file: %s",patcher.outputFileName)
             --patcher.fileData=getfilecontents(patcher.fileName)
         elseif keyword == "start" then
             patcher.startAddress = tonumber(data, 16)
@@ -2121,7 +2229,8 @@ while true do
                 printVerbose(string.format("replacing 0x%08x bytes at 0x%08x", #ips.replaceData, ips.offset))
                 --printVerbose(string.format("replacing: 0x%08x %s", ips.offset, bin2hex(ips.replaceData))) -- MAKES IT HANG
                 printVerbose(string.format("0x%08x",ips.address))
-                if not writeToFile(patcher.fileName, ips.offset+patcher.offset,ips.replaceData) then err("Could not write to file.") end
+                patcher.write(ips.offset+patcher.offset,ips.replaceData)
+                --if not writeToFile(patcher.fileName, ips.offset+patcher.offset,ips.replaceData) then err("Could not write to file.") end
                 loopCount = loopCount+1
                 if loopCount >=loopLimit then
                     quit ("Error: Loop limit reached.")
@@ -2136,17 +2245,22 @@ while true do
                 err("bad or missing readme parameter.")
             end
             -- Throw in a little extra info here
-            if (writeToFile("README.md",0,"```\n"..patcher.help.info .."\n".. patcher.help.description .."\n\n"..patcher.help.extra.."\n\n".. patcher.help.commands.."\n```")) then
+            if (util.writeToFile("README.md",0,"```\n"..patcher.help.info .."\n".. patcher.help.description .."\n\n"..patcher.help.extra.."\n\n".. patcher.help.commands.."\n```")) then
                 print("README updated")
             else
                 quit("Error: README update failed.")
             end
         elseif line == "" then
+        elseif (assignment == true) and (patcher.strict~=true) then
+            patcher.variables[keyword] = util.trim(data)
+            printf('Variable: %s = "%s"', keyword, data)
         else
             if patcher.interactive then
                 print(string.format("unknown command: %s",line))
             else
-                printVerbose(string.format("Unknown command: %s",line))
+                if (patcher.strict==true) or patcher.verbose then
+                    warning("Unknown command: %s",line)
+                end
             end
         end
     end
@@ -2162,6 +2276,8 @@ while true do
         break
     end
 end
+
+if not util.writeToFile(patcher.outputFileName or "output.nes", 0, patcher.newFileData) then err("Could not write to file.") end
 
 printVerbose(string.format("\nelapsed time: %.2f\n", os.clock() - executionTime))
 print("done.")

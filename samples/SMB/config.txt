@@ -1,0 +1,5 @@
+
+oldFile = ../../backup/Super Mario Bros. (World).nes
+newFile = SMB Chill.nes
+
+//cheats = true

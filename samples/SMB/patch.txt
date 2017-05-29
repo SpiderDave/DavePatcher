@@ -1,0 +1,46 @@
+// Patch for Super Mario Bros. (World).nes
+// "Super Mario Bros. Chill" by SpiderDave
+
+include config.txt
+
+load %oldFile%
+outputfile %newFile%
+
+// Offset by 0x10 for the iNES header
+offset 10
+
+include tilemaps.txt
+
+//palette 0f162718
+//export map mario mario.png
+
+// Import Dude Mario graphics with the correct palette
+palette 0f372718
+import map mario dude_mario.png
+
+// Import Cool Goomba graphics
+palette 220f3617
+import map goomba cool_goomba.png
+
+// Set Mario palette
+put 5d8 372718
+
+// Set Mario fire palette
+put 5e0 262718
+
+textmap 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-x!.c 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f2021222328292bafcf
+textmap space 24
+
+// Make toad a little more chill too
+text d57 SORRY BRO       
+text d6b SORRY WEEG-MAN  
+text d7f PRINCESS AINT HERE BUT
+text d98 YA GOT ME!     
+
+if cheats==true
+    // Infinite Lives
+    hex 11d9 ad
+
+    // world select always enabled
+    put 26f eaea
+end if

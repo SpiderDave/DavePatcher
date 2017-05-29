@@ -1,5 +1,5 @@
 ```
-DavePatcher v2017.05.19 - SpiderDave https://github.com/SpiderDave/DavePatcher
+DavePatcher v2017.05.29 - SpiderDave https://github.com/SpiderDave/DavePatcher
 A custom patcher for use with NES romhacking or general use.
 
 
@@ -42,17 +42,26 @@ of multiple words.  Possible keywords:
     commands
         Show this help.  May be useful in interactive mode.
         
+    load <file>
+        Loads <file> and refreshes the data.
+    
+    file <file>
+        Changes the file but does not refresh the data.
+    
+    outputfile <file>
+        Sets the output file.  If not set, defaults to output.nes.
+        
     get <address> <len>
-        display <len> bytes of data at <address>
+        Display <len> bytes of data at <address>
     get hex <address> <len>
         (depreciated) same as get
     
     get asm <address> <len>
-        get <len> bytes of data at <address> and analyze using 6502 opcodes,
+        Get <len> bytes of data at <address> and analyze using 6502 opcodes,
         display formatted asm data.
     
     print asm <data>
-        analyze hexidecimal data <data> using 6502 opcodes, display formatted
+        Analyze hexidecimal data <data> using 6502 opcodes, display formatted
         asm data.
     
     put <address> <data>
@@ -198,7 +207,7 @@ of multiple words.  Possible keywords:
             b0 0 3 h
             b1 1 3 h
             b2 2 3 h
-            end
+            end tilemap
 
     export map <tilemap> <file>
         export tile data to png file using a tile map.
@@ -219,6 +228,13 @@ of multiple words.  Possible keywords:
     refresh
         refreshes the data so that keywords like "find text" will use the new
         altered data.
+    
+    refresh auto
+        automatically refresh the data after each change.
+    
+    refresh manual
+        do not automatically refresh the data after each change.  Use "refresh"
+        command manually.
         
     code
         Execute Lua code
@@ -246,7 +262,8 @@ of multiple words.  Possible keywords:
     
     var <var name> = <string>
         A basic variable assignment.  Currently you can only assign a string
-        value.
+        value.  You may also do variable assignment without using "var" if
+        not in strict mode.
     
     if <var>==<string>
     ...
@@ -256,5 +273,15 @@ of multiple words.  Possible keywords:
         A basic if,else,end if block.  "else" is optional, and it's very 
         limited.  Can not be nested currently, only comparison with string
         is supported.
+    
+    include <file>
+        include another patch file as if it were inserted at this line.
+    
+    strict [on | off]
+        Turn strict mode on or off.  If strict is used without a parameter, on is
+        assumed.  In strict mode:
+        * "var" keyword is required for variable assignment.
+        * break on all warnings.
+
 
 ```
