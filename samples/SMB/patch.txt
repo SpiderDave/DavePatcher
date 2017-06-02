@@ -4,7 +4,6 @@
 include config.txt
 
 load %oldFile%
-outputfile %newFile%
 
 // Offset by 0x10 for the iNES header
 offset 10
@@ -44,3 +43,6 @@ if cheats==true
     // world select always enabled
     put 26f eaea
 end if
+
+makeips %newIPSFile%
+save %newFile%
