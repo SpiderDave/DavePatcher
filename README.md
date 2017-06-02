@@ -1,5 +1,5 @@
 ```
-DavePatcher v2017.05.29 - SpiderDave https://github.com/SpiderDave/DavePatcher
+DavePatcher v2017.06.02 beta - SpiderDave https://github.com/SpiderDave/DavePatcher
 A custom patcher for use with NES romhacking or general use.
 
 
@@ -44,6 +44,11 @@ of multiple words.  Possible keywords:
         
     load <file>
         Loads <file> and refreshes the data.
+    
+    save <file>
+        Save data to <file>.  If the file ends in ".ips" it will save the data 
+        as an ips patch.  If save isn't used in the patch it will automatically
+        save at the end of the patch, unless in strict mode.
     
     file <file>
         Changes the file but does not refresh the data.
@@ -160,6 +165,10 @@ of multiple words.  Possible keywords:
     ips <file>
         apply ips patch to the file
     
+    makeips <file>
+        create ips file named <file> from the current patch.  Note: RLE is not
+        yet supported.
+    
     palette file <file>
         set the available NES palette via file
         Example:
@@ -270,7 +279,7 @@ of multiple words.  Possible keywords:
     else
     ...
     end if
-        A basic if,else,end if block.  "else" is optional, and it's very 
+        A basic if, else, end if block.  "else" is optional, and it's very 
         limited.  Can not be nested currently, only comparison with string
         is supported.
     

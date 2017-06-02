@@ -27,6 +27,7 @@
 --   * test/handle writes and reads outside length of file
 --   * allow patch addresses like 02:1200
 --   * allow variable assignment to use strings with spaces in them
+--   * allow graphics importing to use the closest color if it doesn't match exactly
 
 -- Notes:
 --   * Keywords starting with _ are experimental or unfinished
@@ -106,6 +107,56 @@ function patcher.getHeader(str)
     return header
 end
 
+function patcher.load(f)
+    patcher.fileName = f or patcher.fileName
+    printf("Loading file: %s",patcher.fileName)
+    patcher.fileData = getfilecontents(patcher.fileName)
+    patcher.originalFileData = patcher.fileData
+    patcher.newFileData = patcher.fileData
+    patcher.header = patcher.getHeader()
+end
+
+function patcher.makeIPS(oldData, newData)
+    local a = 0
+    local out = "PATCH"
+    local d1,d2
+    local nRecords = 0
+    while true do
+        if a > #newData then break end
+        
+        d1 = oldData:sub(a+1,a+1)
+        d2 = newData:sub(a+1,a+1)
+        if d1==d2 then
+            a=a+1
+        else
+            local len = 1
+            while true do
+                d1 = oldData:sub(a+1+len,a+1+len)
+                d2 = newData:sub(a+1+len,a+1+len)
+                if d1==d2 then
+                    break
+                else
+                    len=len+1
+                end
+            end
+            
+            out = out..hex2bin(string.format("%06x",a)) -- address
+            out = out..hex2bin(string.format("%04x",len)) -- length
+            out = out..newData:sub(a+1,a+len)
+            --print(#newData:sub(a+1,a+i))
+            --printVerbose("address:%s length:%s", string.format("%06x",a), string.format("%04x",i))
+            
+            nRecords = nRecords +1
+            a=a+len
+            if a > #newData then break end
+        end
+    end
+    out = out.."EOF"
+    printVerbose("%s records",nRecords)
+    printf("%s records",nRecords)
+    return out
+end
+
 patcher.results.clear = function()
     for i=1,#patcher.results do
         patcher.results[i]=nil
@@ -142,8 +193,12 @@ end
 
 local util={}
 
-function startsWith(haystack, needle)
-  return string.sub(haystack, 1, string.len(needle)) == needle
+function util.startsWith(haystack, needle)
+    return string.sub(haystack, 1, string.len(needle)) == needle
+end
+
+function util.endsWith(haystack, needle)
+   return needle=='' or string.sub(haystack,-string.len(needle))==needle
 end
 
 --local condition = load_code("return " .. args.condition, context)
@@ -158,7 +213,8 @@ util.stripSpaces = function(s)
 end
 
 function util.trim(s)
-  return (s:gsub("^%s*(.-)%s*$", "%1"))
+    if not s then return end
+    return (s:gsub("^%s*(.-)%s*$", "%1"))
 end
 
 function util.ltrim(s)
@@ -169,8 +225,6 @@ function util.rtrim(s)
   while n > 0 and s:find("^%s", n) do n = n - 1 end
   return s:sub(1, n)
 end
-
-util.startsWith = startsWith
 
 -- hint is a hint on how to format it
 util.toNumber = function(s, hint)
@@ -188,6 +242,20 @@ end
 printf = util.printf
 
 util.random = math.random
+
+function patcher.save(f)
+    patcher.outputFileName = f or patcher.outputFileName or "output.nes"
+    
+    if util.endsWith(string.lower(patcher.outputFileName), ".ips") then
+        printf("saving as ips patch to %s", patcher.outputFileName)
+        if not util.writeToFile(patcher.outputFileName, 0, patcher.makeIPS(patcher.originalFileData,patcher.newFileData)) then err("Could not write to file.") end    
+    else
+        printf("saving to %s", patcher.outputFileName)
+        if not util.writeToFile(patcher.outputFileName, 0, patcher.newFileData, true) then err("Could not write to file.") end
+    end
+    patcher.saved = true
+end
+
 
 local asm={}
 
@@ -595,6 +663,11 @@ of multiple words.  Possible keywords:
     load <file>
         Loads <file> and refreshes the data.
     
+    save <file>
+        Save data to <file>.  If the file ends in ".ips" it will save the data 
+        as an ips patch.  If save isn't used in the patch it will automatically
+        save at the end of the patch, unless in strict mode.
+    
     file <file>
         Changes the file but does not refresh the data.
     
@@ -710,6 +783,10 @@ of multiple words.  Possible keywords:
     ips <file>
         apply ips patch to the file
     
+    makeips <file>
+        create ips file named <file> from the current patch.  Note: RLE is not
+        yet supported.
+    
     palette file <file>
         set the available NES palette via file
         Example:
@@ -820,7 +897,7 @@ of multiple words.  Possible keywords:
     else
     ...
     end if
-        A basic if,else,end if block.  "else" is optional, and it's very 
+        A basic if, else, end if block.  "else" is optional, and it's very 
         limited.  Can not be nested currently, only comparison with string
         is supported.
     
@@ -1015,11 +1092,16 @@ function patch.load(file)
     return lines
 end
 
-function patch.readLine()
-    if patch.index > # patch.lines then return nil end
-
-    local line = patch.lines[patch.index]
-    line = util.ltrim(line)
+function patcher.replaceVariables(line)
+    local d=os.date("*t")
+    patcher.variables["YEAR"] = string.format("%04d", d.year)
+    patcher.variables["MONTH"] = string.format("%02d", d.month)
+    patcher.variables["DAY"] = string.format("%02d", d.day)
+    patcher.variables["HOUR"] = string.format("%02d", d.hour)
+    patcher.variables["MIN"] = string.format("%02d", d.min)
+    patcher.variables["SEC"] = string.format("%02d", d.sec)
+    patcher.variables["WDAY"] = string.format("%02d", d.wday)
+    patcher.variables["GD"] = gd and "true" or "false"
     
     -- variable replacement
     for k,v in pairs(patcher.variables) do
@@ -1028,7 +1110,17 @@ function patch.readLine()
         end
         line = string.gsub(line, "%%"..k.."%%", v)
     end
+    return line
+end
 
+function patch.readLine()
+    if patch.index > # patch.lines then return nil end
+
+    local line = patch.lines[patch.index]
+    line = util.ltrim(line)
+    
+    line = patcher.replaceVariables(line)
+    
     patch.index = patch.index + 1
 
     return line
@@ -1057,8 +1149,8 @@ function patcher.write(address, data)
     end
 end
 
-function util.writeToFile(file,address, data)
-    if not util.fileExists(file) then
+function util.writeToFile(file,address, data, wipe)
+    if wipe==true or (not util.fileExists(file)) then
         local f=io.open(file,"w")
         f:close()
     end
@@ -1357,8 +1449,10 @@ end
 
 function tileToImage2(tileMap, fileName)
     local tm=patcher.tileMap[tileMap]
-    h=256
-    w=256
+    -- Image width and height according to the tilemap, with an extra 8 pixel width and height
+    local w = tm.width + 8
+    local h = tm.height + 8
+    
     local image=gd.createTrueColor(w,h)
     local colors={}
     for i=0,3 do
@@ -1428,11 +1522,7 @@ if not arg[1] or arg[3] then
 end
 
 if arg[2] then
-    patcher.fileName = arg[2]
-    printVerbose(string.format("file: %s",patcher.fileName))
-    patcher.fileData = getfilecontents(patcher.fileName)
-    patcher.newFileData = patcher.fileData
-    patcher.header = patcher.getHeader()
+    patcher.load(arg[2])
 end
 
 if arg[1] == "-i" then
@@ -1454,6 +1544,7 @@ while true do
     if patcher.interactive==true then
         io.write(patcher.prompt)
         line = io.stdin:read("*l")
+        line = patcher.replaceVariables(line)
     else
         line = patch.readLine()
     end
@@ -1475,8 +1566,6 @@ while true do
         end
     end
     
-    
-    
     patcher.lineQueue={}
     if keyword == "repeat" then
         patcher.lineQueue.r = util.toNumber(data)
@@ -1486,7 +1575,7 @@ while true do
             keyword,data = unpack(util.split(line," ",1))
             keyword=keyword:lower()
             --if keyword == "end repeat" then break end
-            if startsWith(line, "end repeat") then break end
+            if util.startsWith(line, "end repeat") then break end
             patcher.lineQueue[#patcher.lineQueue+1]={line=line,keyword=keyword,data=data}
         end
     end
@@ -1500,16 +1589,16 @@ while true do
             keyword,data=patcher.lineQueue[r].keyword,patcher.lineQueue[r].data
         end
         
-        if startsWith(line, "#") then
+        if util.startsWith(line, "#") then
             if patcher.showAnnotations or patcher.verbose then
                 print(string.sub(line,1))
             end
-        elseif startsWith(line, "//") then
+        elseif util.startsWith(line, "//") then
             -- comment
-        elseif startsWith(line, "verbose off") then
+        elseif util.startsWith(line, "verbose off") then
             patcher.verbose = false
             print("verbose off")
-        elseif startsWith(line, "verbose on") or line == "verbose" then
+        elseif util.startsWith(line, "verbose on") or line == "verbose" then
             patcher.verbose = true
             print("verbose on")
         elseif keyword == "strict" then
@@ -1545,7 +1634,7 @@ while true do
             printf("Corrupting data at 0x%08x: %s --> %s",address, oldData, newData)
             patcher.write(address+patcher.offset,hex2bin(newData))
             --if not writeToFile(patcher.fileName, address+patcher.offset,hex2bin(newData)) then err("Could not write to file.") end
-        elseif startsWith(line:lower(), "_smartsearch lives ") then
+        elseif util.startsWith(line:lower(), "_smartsearch lives ") then
             --search for a9xx8dyyyy (xx is given number of, yyyy is memory location we'll save for later)
             --search for ceyyyy for each result (ce is decrement, yyyy is the memory location we just found)
             --search for eeyyyy for each result (ce is increment, yyyy is the memory location we just found)
@@ -1673,7 +1762,7 @@ while true do
             else
                 patcher.lastFound = nil
             end
-        elseif startsWith(line:lower(), "get asm ") then
+        elseif util.startsWith(line:lower(), "get asm ") then
             local data=string.sub(line,9)
 
             local address = data:sub(1,(data:find(" ")))
@@ -1687,12 +1776,12 @@ while true do
             
             print(string.format("Analyzing data at 0x%08x:\n[%s]",address, hexData))
             print(asm.print(hexData))
-        elseif startsWith(line:lower(), "print asm ") then
+        elseif util.startsWith(line:lower(), "print asm ") then
             hexData=string.sub(line,11)
             
             print(string.format("Analyzing ASM data:\n[%s]",hexData))
             print(asm.print(hexData))
-        elseif startsWith(line:lower(), "get hex ") then
+        elseif util.startsWith(line:lower(), "get hex ") then
             warning('depreciated keyword "get hex". use "get" instead')
             local data=string.sub(line,9)
 
@@ -1719,7 +1808,7 @@ while true do
             old=bin2hex(old)
             
             print(string.format("Hex data at 0x%08x: %s",address, old))
-        elseif startsWith(line, "find text ") then
+        elseif util.startsWith(line, "find text ") then
             local txt=string.sub(line,11)
             address=0
             print(string.format("Find text: %s",txt))
@@ -1736,7 +1825,7 @@ while true do
                     break
                 end
             end
-        elseif startsWith(line:lower(), "get text ") then
+        elseif util.startsWith(line:lower(), "get text ") then
             local data=string.sub(line,10)
             local address = data:sub(1,(data:find(" ")))
             address = tonumber(address, 16)
@@ -1747,7 +1836,6 @@ while true do
             --old=bin2hex(old)
             
             print(string.format("Hex data at 0x%08x: %s",address,mapText(old,true)))
-        --elseif startsWith(line:lower(), "find hex ") then
         elseif keyword == "find" then
             if util.split(util.ltrim(data), " ",1)[1]=="hex" then
                 data = util.split(util.ltrim(data), " ",1)[2]
@@ -1783,14 +1871,14 @@ while true do
             end
         --elseif keyword == "fontdata" then
             --local font = {"33":[0,0,0,0,0,8,8,8,8,8,0,8,0,0,0,0],"34":[0,0,0,0,0,20,20,0,0,0,0,0,0,0,0,0],"35":[0,0,0,0,0,0,40,124,40,40,124,40,0,0,0,0],"36":[0,0,0,0,16,56,84,20,56,80,84,56,16,0,0,0],"37":[0,0,0,0,0,264,148,72,32,144,328,132,0,0,0,0],"38":[0,0,0,0,0,48,72,48,168,68,196,312,0,0,0,0],"39":[0,0,0,0,0,8,8,0,0,0,0,0,0,0,0,0],"40":[0,0,0,0,0,8,4,4,4,4,4,8,0,0,0,0],"41":[0,0,0,0,0,4,8,8,8,8,8,4,0,0,0,0],"42":[0,0,0,0,32,168,112,428,112,168,32,0,0,0,0,0],"43":[0,0,0,0,0,0,16,16,124,16,16,0,0,0,0,0],"44":[0,0,0,0,0,0,0,0,0,0,24,24,16,8,0,0],"45":[0,0,0,0,0,0,0,0,60,0,0,0,0,0,0,0],"46":[0,0,0,0,0,0,0,0,0,0,24,24,0,0,0,0],"47":[0,0,0,0,0,16,16,8,8,8,4,4,0,0,0,0],"48":[0,0,0,0,0,24,36,36,36,36,36,24,0,0,0,0],"49":[0,0,0,0,0,8,8,8,8,8,8,8,0,0,0,0],"50":[0,0,0,0,0,24,36,32,16,8,4,60,0,0,0,0],"51":[0,0,0,0,0,24,36,32,24,32,36,24,0,0,0,0],"52":[0,0,0,0,0,32,36,36,60,32,32,32,0,0,0,0],"53":[0,0,0,0,0,60,4,4,24,32,36,24,0,0,0,0],"54":[0,0,0,0,0,24,36,4,28,36,36,24,0,0,0,0],"55":[0,0,0,0,0,60,32,32,16,8,8,8,0,0,0,0],"56":[0,0,0,0,0,24,36,36,24,36,36,24,0,0,0,0],"57":[0,0,0,0,0,24,36,36,56,32,36,24,0,0,0,0],"58":[0,0,0,0,0,0,24,24,0,0,24,24,0,0,0,0],"59":[0,0,0,0,0,0,24,24,0,0,24,24,16,8,0,0],"60":[0,0,0,0,0,32,16,8,4,8,16,32,0,0,0,0],"61":[0,0,0,0,0,0,0,60,0,0,60,0,0,0,0,0],"62":[0,0,0,0,0,4,8,16,32,16,8,4,0,0,0,0],"63":[0,0,0,0,0,24,36,32,16,8,0,8,0,0,0,0],"64":[0,0,0,0,240,264,612,660,660,484,8,240,0,0,0,0],"65":[0,0,0,0,0,24,36,36,60,36,36,36,0,0,0,0],"66":[0,0,0,0,0,28,36,36,28,36,36,28,0,0,0,0],"67":[0,0,0,0,0,24,36,4,4,4,36,24,0,0,0,0],"68":[0,0,0,0,0,28,36,36,36,36,36,28,0,0,0,0],"69":[0,0,0,0,0,60,4,4,28,4,4,60,0,0,0,0],"70":[0,0,0,0,0,60,4,4,28,4,4,4,0,0,0,0],"71":[0,0,0,0,0,24,36,4,52,36,36,24,0,0,0,0],"72":[0,0,0,0,0,36,36,36,60,36,36,36,0,0,0,0],"73":[0,0,0,0,0,28,8,8,8,8,8,28,0,0,0,0],"74":[0,0,0,0,0,60,16,16,16,20,20,8,0,0,0,0],"75":[0,0,0,0,0,36,36,20,12,20,36,36,0,0,0,0],"76":[0,0,0,0,0,4,4,4,4,4,4,60,0,0,0,0],"77":[0,0,0,0,0,68,68,108,84,84,68,68,0,0,0,0],"78":[0,0,0,0,0,68,76,84,84,84,100,68,0,0,0,0],"79":[0,0,0,0,0,24,36,36,36,36,36,24,0,0,0,0],"80":[0,0,0,0,0,28,36,36,28,4,4,4,0,0,0,0],"81":[0,0,0,0,0,24,36,36,36,52,36,88,0,0,0,0],"82":[0,0,0,0,0,28,36,36,28,36,36,36,0,0,0,0],"83":[0,0,0,0,0,24,36,4,24,32,36,24,0,0,0,0],"84":[0,0,0,0,0,124,16,16,16,16,16,16,0,0,0,0],"85":[0,0,0,0,0,36,36,36,36,36,36,24,0,0,0,0],"86":[0,0,0,0,0,68,68,68,68,40,40,16,0,0,0,0],"87":[0,0,0,0,0,84,84,84,84,84,56,40,0,0,0,0],"88":[0,0,0,0,0,68,68,40,16,40,68,68,0,0,0,0],"89":[0,0,0,0,0,68,68,40,16,16,16,16,0,0,0,0],"90":[0,0,0,0,0,60,32,16,16,8,4,60,0,0,0,0],"91":[0,0,0,0,0,28,4,4,4,4,4,28,0,0,0,0],"92":[0,0,0,0,0,4,4,8,8,8,16,16,0,0,0,0],"93":[0,0,0,0,0,28,16,16,16,16,16,28,0,0,0,0],"94":[0,0,0,0,0,24,36,0,0,0,0,0,0,0,0,0],"95":[0,0,0,0,0,0,0,0,0,0,0,0,508,0,0,0],"96":[0,0,0,0,0,4,8,0,0,0,0,0,0,0,0,0],"97":[0,0,0,0,0,0,0,24,32,56,36,88,0,0,0,0],"98":[0,0,0,0,0,0,4,4,28,36,36,28,0,0,0,0],"99":[0,0,0,0,0,0,0,0,24,4,4,24,0,0,0,0],"100":[0,0,0,0,0,0,32,32,56,36,36,88,0,0,0,0],"101":[0,0,0,0,0,0,0,24,36,28,4,56,0,0,0,0],"102":[0,0,0,0,0,0,48,8,8,28,8,8,0,0,0,0],"103":[0,0,0,0,0,0,0,0,88,36,36,56,32,36,24,0],"104":[0,0,0,0,0,0,4,4,4,28,36,36,0,0,0,0],"105":[0,0,0,0,0,0,8,0,12,8,8,8,0,0,0,0],"106":[0,0,0,0,0,0,0,16,0,24,16,16,16,12,0,0],"107":[0,0,0,0,0,0,0,4,20,12,20,20,0,0,0,0],"108":[0,0,0,0,0,0,4,4,4,4,4,8,0,0,0,0],"109":[0,0,0,0,0,0,0,0,4,88,168,168,0,0,0,0],"110":[0,0,0,0,0,0,0,0,4,28,36,36,0,0,0,0],"111":[0,0,0,0,0,0,0,0,24,36,36,24,0,0,0,0],"112":[0,0,0,0,0,0,0,4,56,72,72,56,8,8,8,0],"113":[0,0,0,0,0,0,0,0,88,36,36,56,32,32,64,0],"114":[0,0,0,0,0,0,0,0,52,72,8,8,0,0,0,0],"115":[0,0,0,0,0,0,0,24,4,24,32,24,0,0,0,0],"116":[0,0,0,0,0,0,8,8,28,8,8,16,0,0,0,0],"117":[0,0,0,0,0,0,0,0,36,36,36,88,0,0,0,0],"118":[0,0,0,0,0,0,0,0,68,68,40,16,0,0,0,0],"119":[0,0,0,0,0,0,0,0,84,84,84,40,0,0,0,0],"120":[0,0,0,0,0,0,0,0,36,24,24,36,0,0,0,0],"121":[0,0,0,0,0,0,0,0,36,36,36,56,32,36,24,0],"122":[0,0,0,0,0,0,0,0,60,16,8,60,0,0,0,0],"123":[0,0,0,16,8,8,8,4,8,8,8,16,0,0,0,0],"124":[0,0,0,8,8,8,8,8,8,8,8,8,0,0,0,0],"125":[0,0,0,4,8,8,8,16,8,8,8,4,0,0,0,0],"126":[0,0,0,0,0,0,0,24,292,192,0,0,0,0,0,0],"161":[0,0,0,0,0,8,0,8,8,8,8,8,0,0,0,0],"162":[0,0,0,0,0,0,16,56,20,20,56,16,0,0,0,0],"163":[0,0,0,0,0,48,8,8,28,8,8,60,0,0,0,0],"164":[0,0,0,0,0,0,132,120,72,72,120,132,0,0,0,0],"165":[0,0,0,0,68,40,16,56,16,56,16,16,0,0,0,0],"166":[0,0,0,8,8,8,8,0,8,8,8,8,0,0,0,0],"167":[0,0,0,0,0,0,48,72,8,48,72,72,48,64,72,48],"168":[0,0,0,0,0,108,108,0,0,0,0,0,0,0,0,0],"169":[0,0,0,0,240,264,612,532,532,612,264,240,0,0,0,0],"8364":[0,0,0,0,0,112,8,60,8,60,8,112,0,0,0,0],"name":"SlightlyFancyPix","copy":"SpiderDave","letterspace":"64","basefont_size":"512","basefont_left":"62","basefont_top":"0","basefont":"Arial","basefont2":""}
-        elseif startsWith(line, "export map ") then
+        elseif util.startsWith(line, "export map ") then
             if not gd then
                 err("could not use export command because gd did not load.")
             end
             local dummy, dummy, tileMap, fileName=unpack(util.split(line," ",3))
             printf("exporting tile map %s to %s",tileMap, fileName)
             tileToImage2(tileMap, fileName)
-        elseif startsWith(line, "export ") then
+        elseif util.startsWith(line, "export ") then
             if not gd then
                 err("could not use export command because gd did not load.")
             end
@@ -1805,7 +1893,7 @@ while true do
             tileData = patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+len)
             printVerbose(bin2hex(tileData))
             tileToImage(tileData, fileName)
-        elseif startsWith(line, "import map ") then
+        elseif util.startsWith(line, "import map ") then
             if not gd then
                 err("could not use import command because gd did not load.")
             end
@@ -1824,7 +1912,7 @@ while true do
             end
             
             --if not writeToFile(patcher.fileName, address+patcher.offset,tileData) then err("Could not write to file.") end
-        elseif startsWith(line, "import ") then
+        elseif util.startsWith(line, "import ") then
             if not gd then
                 err("could not use import command because gd did not load.")
             end
@@ -1837,24 +1925,24 @@ while true do
             
             patcher.write(address+patcher.offset,tileData)
             --if not writeToFile(patcher.fileName, address+patcher.offset,tileData) then err("Could not write to file.") end
-        elseif startsWith(line, "goto ") then
+        elseif util.startsWith(line, "goto ") then
             local label = util.trim(string.sub(line,6))
             patch.index = 1
             while true do
                 line = patch.readLine()
-                if startsWith(line, ":"..label) then break end
+                if util.startsWith(line, ":"..label) then break end
             end
             patcher.gotoCount = patcher.gotoCount + 1
             if patcher.gotoCount >= patcher.gotoLimit then
                 err("goto limit reached (could be infinite loop).")
             end
             
-        elseif startsWith(line, "skip") then
+        elseif util.startsWith(line, "skip") then
             local nSkipped = 0
             while true do
                 nSkipped = nSkipped +1
                 line = patch.readLine()
-                if startsWith(line, "end skip") then break end
+                if util.startsWith(line, "end skip") then break end
             end
             print(string.format("skipped %d lines.", nSkipped-1))
         elseif keyword == "var" then
@@ -1864,9 +1952,18 @@ while true do
             printf('Variable: %s = "%s"', k, v)
         elseif keyword == "if" then
             local k,v = table.unpack(util.split(data, "=="))
-            k,v = util.trim(k), util.trim(v)
-            printVerbose('Compare variable: "%s" == "%s"', k, v)
-            if patcher.variables[k] == v then
+            local testTrue = false
+            
+            if (not v) and k then
+                testTrue = true
+                k = util.trim(k)
+                printVerbose('Test variable: "%s"', k)
+            else
+                k,v = util.trim(k), util.trim(v)
+                printVerbose('Compare variable: "%s" == "%s"', k, v)
+            end
+            
+            if testTrue==true or (patcher.variables[k] == v) then
                 patcher["if"] = true
                 printVerbose(" true")
             else
@@ -1877,8 +1974,14 @@ while true do
                 while true do
                     nSkipped = nSkipped +1
                     line = patch.readLine()
-                    if startsWith(line, "end if") then break end
-                    if startsWith(line, "else") then break end
+                    if not line then
+                        err('Expected "else" or "end if".  Got end of patch instead.')
+                    end
+                    if util.startsWith(line, "if ") then
+                        err('Expected "else" or "end if".  Got "if" instead.')
+                    end
+                    if util.startsWith(line, "end if") then break end
+                    if util.startsWith(line, "else") then break end
                 end
                 --print(string.format("skipped %d lines.", nSkipped-1))
             end
@@ -1889,20 +1992,22 @@ while true do
                 while true do
                     nSkipped = nSkipped +1
                     line = patch.readLine()
-                    if startsWith(line, "end if") then break end
+                    if util.startsWith(line, "end if") then break end
                 end
                 --print(string.format("skipped %d lines.", nSkipped-1))
             end
-        elseif startsWith(line, "end if") then
-        elseif startsWith(line, "start tilemap ") then
+        elseif util.startsWith(line, "end if") then
+        elseif util.startsWith(line, "start tilemap ") then
             local n = string.sub(line,15)
             local tm={}
+            tm.width = 0
+            tm.height = 0
             local address = 0
             local adjustX = 0
             local adjustY = 0
             while true do
                 line = patch.readLine()
-                if startsWith(line, "end tilemap") then break end
+                if util.startsWith(line, "end tilemap") then break end
                 if line:find("=") then
                     local k,v=unpack(util.split(line, "="))
                     k=util.trim(k)
@@ -1917,7 +2022,7 @@ while true do
                         print(string.format("adjust x = %s (%s)",adjustX, util.split(v," ")[1]))
                         print(string.format("adjust y = %s (%s)",adjustY, util.split(v," ")[2]))
                     end
-                elseif line=="" or startsWith(line, "//") then
+                elseif line=="" or util.startsWith(line, "//") then
                 else
                     local tileNum, x, y, flip = unpack(util.split(line," ",3))
                     tileNum = tonumber(tileNum,16)
@@ -1930,9 +2035,14 @@ while true do
                     end
                     tm[#tm+1]={address=address, tileNum=tileNum, x=x,y=y, flip=flip, adjust = {x=adjustX,y=adjustY}}
                     --printf("%s: %s, %s", tileNum, x, y)
+                    if x>tm.width then tm.width = x end
+                    if y>tm.height then tm.height = y end
                 end
             end
+            tm.width=tm.width*8+8
+            tm.height=tm.height*8+8
             patcher.tileMap[n] = tm
+            --printf("tilemap size: %s %s",tm.width,tm.height)
         elseif keyword == "eval" then
             local f=util.sandbox:loadCode("return "..data)
             print(f())
@@ -2058,7 +2168,7 @@ while true do
                 if address > #patcher.fileData or address>=0x20000 then break end
             end
             
-        elseif startsWith(line, "copy hex ") then
+        elseif util.startsWith(line, "copy hex ") then
             warning('depreciated keyword "copy hex". use "copy" instead')
             local data=string.sub(line,10)
             local address = data:sub(1,(data:find(" ")))
@@ -2073,7 +2183,7 @@ while true do
             print(string.format("Copying 0x%08x bytes from 0x%08x to 0x%08x",l, address, address2))
             patcher.write(address2+patcher.offset,data)
             --if not writeToFile(patcher.fileName, address2+patcher.offset,data) then err("Could not write to file.") end
-        elseif startsWith(line, "copy ") then
+        elseif util.startsWith(line, "copy ") then
             local data=string.sub(line,6)
             local address = data:sub(1,(data:find(" ")))
             data = data:sub((data:find(" ")+1))
@@ -2101,7 +2211,7 @@ while true do
             end
         elseif line=="header" then
             local header = patcher.getHeader()
-            print(string.format("\niNES header data:\nid: %s\nPRG ROM: %02x x 4000\nCHR ROM: %02x x 2000\n\n",header.id,header.prg_rom_size,header.chr_rom_size))
+            print(string.format("\niNES header data:\nid: %s\nPRG ROM: %02x x 4000\nCHR ROM: %02x x 2000\n",header.id,header.prg_rom_size,header.chr_rom_size))
         elseif line=="_test" then
             for i=0,255-26 do
                 local out = "textmap ABCDEFGHIJKLMNOPQRSTUVWXYZ "
@@ -2117,17 +2227,21 @@ while true do
             
         elseif line=="write all" then
             --if not writeToFile(patcher.fileName, patcher.offset,patcher.fileData) then err("Could not write to file.") end
+        elseif keyword=="makeips" then
+            local f = util.trim(data)
+            printf("Creating IPS patch: %s",f)
+            if not util.writeToFile(f, 0, patcher.makeIPS(patcher.originalFileData,patcher.newFileData)) then err("Could not write to file.") end
         elseif keyword=="file" then
             patcher.fileName = data
             file = data
             printf("File: %s",patcher.fileName)
             --patcher.fileData=getfilecontents(patcher.fileName)
         elseif keyword=="load" then
-            patcher.fileName = data
-            printf("Loading file: %s",patcher.fileName)
-            patcher.fileData = getfilecontents(patcher.fileName)
-            patcher.newFileData = patcher.fileData
-            patcher.header = patcher.getHeader()
+            patcher.load(data)
+        elseif keyword=="save" then
+            local f = util.trim(data)
+            --print("["..f.."]")
+            patcher.save(f)
         elseif keyword=="outputfile" then
             patcher.outputFileName = data
             printf("Output file: %s",patcher.outputFileName)
@@ -2139,7 +2253,7 @@ while true do
             patcher.offset = tonumber(data, 16)
             print("Setting offset: "..data)
         elseif keyword == "palette" then
-            if startsWith(data, "file") then
+            if util.startsWith(data, "file") then
                 local fileName = util.split(data, " ", 1)[2]
                 local fileData = getfilecontents(fileName)
                 
@@ -2179,13 +2293,15 @@ while true do
                     if diff.count>patcher.diffMax then break end
                 end
             end
-        elseif startsWith(line, "ips ") then
+        elseif keyword == "ips" then
             local ips = {}
+            ips.nRecords = 0
+            ips.nRLE = 0
             ips.n=string.sub(line,5)
             print("Applying ips patch: "..ips.n)
             --ips.file = io.open(ips.n,"r")
             ips.data = getfilecontents(ips.n)
-            print(#ips.data)
+            --print(#ips.data)
             ips.header = ips.data:sub(1,5)
             if ips.header ~= "PATCH" then quit ("Error: Invalid ips header.") end
             --print ("ips header: "..ips.header)
@@ -2198,6 +2314,24 @@ while true do
                 ips.offset = ips.data:sub(ips.address+1,ips.address+3)
                 if ips.offset == "EOF" then
                     printVerbose("EOF found")
+                    -- IPS format exension "truncate" feature
+                    local truncate = ips.data:sub(ips.address+4,ips.address+7)
+                    if truncate~="" then
+                        truncate = tonumber(bin2hex(truncate),16)
+                        if truncate == 0 then
+                            -- Doesn't usually make sense to truncate the whole file via ips patch.
+                            warning("Bad IPS truncate value (0).")
+                        elseif truncate == #patcher.newFileData then
+                            -- It's already the right size, do nothing.
+                        elseif truncate > #patcher.newFileData then
+                            -- Expand file
+                            patcher.newFileData = patcher.newFileData .. string.rep(string.char(0), truncate - #patcher.newFileData)
+                        else
+                            -- Truncate file
+                            patcher.newFileData = patcher.newFileData:sub(1,truncate)
+                        end
+                    end
+                    
                     break
                 end
                 
@@ -2222,10 +2356,12 @@ while true do
                     ips.address = ips.address + 1
                     printVerbose(string.format("RLE fill: %s", bin2hex(ips.fill)))
                     ips.replaceData = string.rep(ips.fill, ips.chunkSize)
+                    ips.nRLE = ips.nRLE + 1
                 else
                     ips.replaceData = ips.data:sub(ips.address+1,ips.address+ips.chunkSize)
                     ips.address=ips.address+ips.chunkSize
                 end
+                ips.nRecords = ips.nRecords +1
                 printVerbose(string.format("replacing 0x%08x bytes at 0x%08x", #ips.replaceData, ips.offset))
                 --printVerbose(string.format("replacing: 0x%08x %s", ips.offset, bin2hex(ips.replaceData))) -- MAKES IT HANG
                 printVerbose(string.format("0x%08x",ips.address))
@@ -2236,10 +2372,8 @@ while true do
                     quit ("Error: Loop limit reached.")
                 end
             end
+            printVerbose("%s records (%s RLE)",ips.nRecords, ips.nRLE)
             print("ips done.")
-            
-    --        old=patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+#txt/2)
-    --        old=bin2hex(old)
         elseif keyword == "readme" then
             if not (data == "update") then
                 err("bad or missing readme parameter.")
@@ -2277,7 +2411,19 @@ while true do
     end
 end
 
-if not util.writeToFile(patcher.outputFileName or "output.nes", 0, patcher.newFileData) then err("Could not write to file.") end
+--if not util.writeToFile("ips_test.nes.ips",0,patcher.makeIPS(patcher.originalFileData,patcher.newFileData)) then err("Could not write to file.") end
+--if not util.writeToFile(patcher.outputFileName or "output.nes", 0, patcher.newFileData, true) then err("Could not write to file.") end
+if patcher.saved then
+    printf('Patching complete.  Output to file "%s"', patcher.outputFileName)
+else
+    if patcher.strict then
+        -- In strict mode, require an explicit save
+        printf("done.")
+    else
+        patcher.save()
+        printf('Patching complete.  Output to file "%s"', patcher.outputFileName)
+    end
+end
+
 
 printVerbose(string.format("\nelapsed time: %.2f\n", os.clock() - executionTime))
-print("done.")
