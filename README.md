@@ -1,5 +1,5 @@
 ```
-DavePatcher v2017.06.02 beta - SpiderDave https://github.com/SpiderDave/DavePatcher
+DavePatcher v2017.06.07 beta - SpiderDave https://github.com/SpiderDave/DavePatcher
 A custom patcher for use with NES romhacking or general use.
 
 
@@ -197,6 +197,11 @@ of multiple words.  Possible keywords:
         
         address = <address>
             Set the address for the tile map.
+        gridsize = <size>
+            Set the grid size to <size>.  This determines what the x and y values
+            of each tile map entry is multiplied by (default is 8).
+        adjust = <x> <y>
+            adjust the placement of the tile by <x>,<y> pixels.
         <tileNum> <x> <y> [h]
             Tile map entry.  "h" in the fourth field is used to optionally flip
             the tile horizontally.  In the future, other flags like "v" for
@@ -291,6 +296,7 @@ of multiple words.  Possible keywords:
         assumed.  In strict mode:
         * "var" keyword is required for variable assignment.
         * break on all warnings.
+        * disable auto save (see "save" keyword).
 
 
 ```

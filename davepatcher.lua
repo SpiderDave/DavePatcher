@@ -10,12 +10,12 @@
 --   * Clean up scope of variables
 --   * Add more asm set formats
 --   * Create example scripts
---   * Better control over writing to rom
 --   * Create ips patches and other possible patch formats
+--     + ips support done.  Needs RLE support.
 --   * Better control when importing and exporting graphics:
---     + Export to image without overwriting image
+--     + Export to image without overwriting image 
+--       *DONE*
 --     + Set palette for each tilemap
---   * Allow comments and indentation everywhere
 --   * Rework repeat so the repeated lines are evaluated for each iteration, not once
 --   * Improve "find text" to include unknown characters
 --   * Improve "find" to include unknown bytes
@@ -28,6 +28,7 @@
 --   * allow patch addresses like 02:1200
 --   * allow variable assignment to use strings with spaces in them
 --   * allow graphics importing to use the closest color if it doesn't match exactly
+--   * multiple (named) textmaps
 
 -- Notes:
 --   * Keywords starting with _ are experimental or unfinished
@@ -815,6 +816,11 @@ of multiple words.  Possible keywords:
         
         address = <address>
             Set the address for the tile map.
+        gridsize = <size>
+            Set the grid size to <size>.  This determines what the x and y values
+            of each tile map entry is multiplied by (default is 8).
+        adjust = <x> <y>
+            adjust the placement of the tile by <x>,<y> pixels.
         <tileNum> <x> <y> [h]
             Tile map entry.  "h" in the fourth field is used to optionally flip
             the tile horizontally.  In the future, other flags like "v" for
@@ -909,6 +915,7 @@ of multiple words.  Possible keywords:
         assumed.  In strict mode:
         * "var" keyword is required for variable assignment.
         * break on all warnings.
+        * disable auto save (see "save" keyword).
 
 ]]
 
@@ -1114,26 +1121,15 @@ function patcher.replaceVariables(line)
 end
 
 function patch.readLine()
-    if patch.index > # patch.lines then return nil end
+    if patch.index > #patch.lines then return nil end
 
     local line = patch.lines[patch.index]
     line = util.ltrim(line)
-    
     line = patcher.replaceVariables(line)
     
     patch.index = patch.index + 1
 
     return line
-end
-
-
-function setfilecontents(file, data)
-    local f,err = io.open(file,"w")
-    if err then print(err) end
-    if not f then return nil end
-    f:write(data)
-    f:close()
-    return true
 end
 
 function util.fileExists(name)
@@ -1318,7 +1314,7 @@ function imageToTile(len, fileName)
     return tileData
 end
 
-function imageToTile2(tileMap, fileName)
+function imageToTile3(tileMap, fileName)
     local tm=patcher.tileMap[tileMap]
     local out = {
         t={},
@@ -1337,26 +1333,30 @@ function imageToTile2(tileMap, fileName)
 
     local colors={}
     for i=0,3 do
-        --print(string.format("%02x %02x %02x",table.unpack(nesPalette[colors[i]])))
         colors[i]=image:colorAllocate(table.unpack(patcher.palette[patcher.colors[i]]))
     end
     local xo=0
     local yo=0
     
-    local pr,pg,pb = table.unpack(patcher.palette[patcher.colors[3]])
-    for t=0,nTiles-1 do
-        out.t[t] = {}
+    local f = function(xo,yo)
+        local pr,pg,pb = table.unpack(patcher.palette[patcher.colors[3]])
+
+        out = {}
         for y = 0, 7 do
-            out.t[t][y] = 0
-            out.t[t][y+8] = 0
+            out[y] = 0
+            out[y+8] = 0
             for x=0, 7 do
                 local c = image:getPixel(x+xo,y+yo) or 0
                 local r,g,b=image:red(c),image:green(c),image:blue(c)
+                
+                --c = image:colorClosestHWB(r,g,b)
+                --r,g,b=image:red(c),image:green(c),image:blue(c)
+                
                 for i=0,3 do
                     local pr,pg,pb = table.unpack(patcher.palette[patcher.colors[i]])
                     if string.format("%02x%02x%02x",r,g,b) == string.format("%02x%02x%02x",pr,pg,pb) then
-                        out.t[t][y]=out.t[t][y] + (2^(7-x)) * (i%2)
-                        out.t[t][y+8]=out.t[t][y+8] + (2^(7-x)) * (math.floor(i/2))
+                        out[y]=out[y] + (2^(7-x)) * (i%2)
+                        out[y+8]=out[y+8] + (2^(7-x)) * (math.floor(i/2))
                     end
                 end
                 --print(string.format("%02x (%02x,%02x) %02x%02x%02x  %02x%02x%02x",t, x,y, r,g,b,  pr,pg,pb))
@@ -1367,6 +1367,8 @@ function imageToTile2(tileMap, fileName)
             xo=0
             yo=yo+8
         end
+
+        return out
     end
 
     local tileData = ""
@@ -1377,17 +1379,24 @@ function imageToTile2(tileMap, fileName)
         tileData[i]={}
         
         t=tm[i].tileNum
+        
+        --local tileImageData = f(tm[i].x*tm[i].gridSize,tm[i].y*tm[i].gridSize)
+        local tileImageData = f(tm[i].realX,tm[i].realY)
+        
         local o=""
         if tm[i].flip.vertical then
             for j=7,0,-1 do
-                o=o..string.char(out.t[tm[i].y*w/8+tm[i].x][j])
+                --o=o..string.char(out.t[tm[i].y*w/8+tm[i].x][j])
+                o=o..string.char(tileImageData[j])
             end
             for j=15,8,-1 do
-                o=o..string.char(out.t[tm[i].y*w/8+tm[i].x][j])
+                --o=o..string.char(out.t[tm[i].y*w/8+tm[i].x][j])
+                o=o..string.char(tileImageData[j])
             end
         elseif tm[i].flip.horizontal then
-            for j=0,#out.t[t] do
-                local b=out.t[tm[i].y*w/8+tm[i].x][j]
+            for j=0,#tileImageData do
+                --local b=out.t[tm[i].y*w/8+tm[i].x][j]
+                local b = tileImageData[j]
                 local b2=0
                 for jj=0,7 do
                     if bit.isSet(b, 7-jj) then
@@ -1397,13 +1406,11 @@ function imageToTile2(tileMap, fileName)
                 o=o..string.char(b2)
             end
         else
-            for j=0,#out.t[t] do
-                o=o..string.char(out.t[tm[i].y*w/8+tm[i].x][j])
+            for j=0,#tileImageData do
+                --o=o..string.char(out.t[tm[i].y*w/8+tm[i].x][j])
+                o=o..string.char(tileImageData[j])
             end
         end
-        
-        
-        
         
         tileData[i].t = o                           -- the tile data for this tile to be applied
         tileData[i].address = tm[i].address + t*16  -- the address to apply it to
@@ -1449,14 +1456,27 @@ end
 
 function tileToImage2(tileMap, fileName)
     local tm=patcher.tileMap[tileMap]
-    -- Image width and height according to the tilemap, with an extra 8 pixel width and height
-    local w = tm.width + 8
-    local h = tm.height + 8
+    -- Image width and height according to the tilemap
+    local w = tm.width
+    local h = tm.height
     
-    local image=gd.createTrueColor(w,h)
+    local image = gd.createFromPng(fileName) or gd.createTrueColor(w,h) or err("could not create image.")
+    local width, height = image:sizeXY()
+    
+    if (w > width) or (h > height) then
+        -- expand width or height if the tilemap doesn't fit
+        local newWidth, newHeight = width, height
+        if w > newWidth then newWidth = w end
+        if h > newHeight then newHeight = h end
+        local newImage = gd.createTrueColor(newWidth,newHeight)
+        --gd.copy(dstImage, srcImage, dstX, dstY, srcX, srcY, w, h) 
+        gd.copy(newImage, image, 0,0,0,0, width, height)
+        image = newImage
+    end
+    
+    --local image=gd.createTrueColor(w,h)
     local colors={}
     for i=0,3 do
-        --print(string.format("%02x %02x %02x",table.unpack(nesPalette[colors[i]])))
         colors[i]=image:colorAllocate(table.unpack(patcher.palette[patcher.colors[i]]))
     end
     local xo=0
@@ -1476,8 +1496,8 @@ function tileToImage2(tileMap, fileName)
                 local c=0
                 if bit.isSet(byte,7-x)==true then c=c+1 end
                 if bit.isSet(byte2,7-x)==true then c=c+2 end
-                xo=tm[i].x*8+tm[i].adjust.x or 0
-                yo=tm[i].y*8+tm[i].adjust.y or 0
+                xo=tm[i].x * tm[i].gridSize + tm[i].adjust.x or 0
+                yo=tm[i].y * tm[i].gridSize + tm[i].adjust.y or 0
                 if tm[i].flip.horizontal then
                     image:setPixel(7-x+xo,y+yo,colors[c])
                 else
@@ -1633,7 +1653,6 @@ while true do
             
             printf("Corrupting data at 0x%08x: %s --> %s",address, oldData, newData)
             patcher.write(address+patcher.offset,hex2bin(newData))
-            --if not writeToFile(patcher.fileName, address+patcher.offset,hex2bin(newData)) then err("Could not write to file.") end
         elseif util.startsWith(line:lower(), "_smartsearch lives ") then
             --search for a9xx8dyyyy (xx is given number of, yyyy is memory location we'll save for later)
             --search for ceyyyy for each result (ce is decrement, yyyy is the memory location we just found)
@@ -1747,7 +1766,6 @@ while true do
                     if address>patcher.startAddress+patcher.offset then
                         print(string.format("    %s Found at 0x%08x, replacing with %s",findValue,address-1-patcher.offset,replaceValue))
                         patcher.write(address-1,hex2bin(replaceValue))
-                        --if not writeToFile(patcher.fileName, address-1,hex2bin(replaceValue)) then err("Could not write to file.") end
                         patcher.results[#patcher.results+1]={address=address-1-patcher.offset}
                         nResults = nResults + 1
                         if nResults >= limit then break end
@@ -1902,16 +1920,13 @@ while true do
             --len=tonumber(len,16)*16
             
             print(string.format("importing tile map %s",fileName))
-            local tileData = imageToTile2(tileMap, fileName)
+            local tileData = imageToTile3(tileMap, fileName)
             
             local address,td
             for i=1,#tileData do
                 address,td=tileData[i].address, tileData[i].t
                 patcher.write(address+patcher.offset,td)
-                --if not writeToFile(patcher.fileName, address+patcher.offset,td) then err("Could not write to file.") end
             end
-            
-            --if not writeToFile(patcher.fileName, address+patcher.offset,tileData) then err("Could not write to file.") end
         elseif util.startsWith(line, "import ") then
             if not gd then
                 err("could not use import command because gd did not load.")
@@ -1924,7 +1939,6 @@ while true do
             local tileData = imageToTile(len, fileName)
             
             patcher.write(address+patcher.offset,tileData)
-            --if not writeToFile(patcher.fileName, address+patcher.offset,tileData) then err("Could not write to file.") end
         elseif util.startsWith(line, "goto ") then
             local label = util.trim(string.sub(line,6))
             patch.index = 1
@@ -2005,6 +2019,7 @@ while true do
             local address = 0
             local adjustX = 0
             local adjustY = 0
+            local gridSize = 8
             while true do
                 line = patch.readLine()
                 if util.startsWith(line, "end tilemap") then break end
@@ -2015,6 +2030,9 @@ while true do
                     if k == "address" then
                         --printf("%s=%s",k,v)
                         address = tonumber(v,16)
+                    end
+                    if k == "gridsize" then
+                        gridSize = tonumber(v,16)
                     end
                     if k == "adjust" then
                         adjustX = tonumber(util.split(v," ")[1],10)
@@ -2033,14 +2051,16 @@ while true do
                     else
                         flip = {}
                     end
-                    tm[#tm+1]={address=address, tileNum=tileNum, x=x,y=y, flip=flip, adjust = {x=adjustX,y=adjustY}}
+                    tm[#tm+1]={address=address, tileNum=tileNum,realX=x*gridSize+adjustX,realY=y*gridSize+adjustY, x=x,y=y, flip=flip, adjust = {x=adjustX,y=adjustY}, gridSize = gridSize}
                     --printf("%s: %s, %s", tileNum, x, y)
-                    if x>tm.width then tm.width = x end
-                    if y>tm.height then tm.height = y end
+                    
+                    if x*gridSize+adjustX > tm.width then tm.width = x*gridSize+adjustX end
+                    if y*gridSize+adjustY > tm.height then tm.height = y*gridSize+adjustY end
                 end
             end
-            tm.width=tm.width*8+8
-            tm.height=tm.height*8+8
+            tm.width=tm.width+8
+            tm.height=tm.height+8
+
             patcher.tileMap[n] = tm
             --printf("tilemap size: %s %s",tm.width,tm.height)
         elseif keyword == "eval" then
@@ -2062,7 +2082,6 @@ while true do
             txt=mapText(txt)
             
             patcher.write(address+patcher.offset,txt)
-            --if not writeToFile(patcher.fileName, address+patcher.offset,txt) then err("Could not write to file.") end
         elseif keyword == "textmap" then
             local mapOld = data:sub(1,(data:find(" ")-1))
             local mapNew = data:sub((data:find(" ")+1))
@@ -2089,7 +2108,6 @@ while true do
             old=bin2hex(old)
             printf("Setting bytes: 0x%08x: %s --> %s",address,old, newData)
             patcher.write(address+patcher.offset,hex2bin(newData))
-            --if not writeToFile(patcher.fileName, address+patcher.offset,hex2bin(newData)) then err("Could not write to file.") end
         elseif keyword == "fill" then
             address = util.toNumber(util.split(data, " ", 1)[1])
             data = util.split(data, " ", 1)[2]
@@ -2100,7 +2118,6 @@ while true do
             local newData = string.rep(fillString, fillCount)
             printVerbose("Fill data: 0x%08x: %s",address, newData)
             patcher.write(address+patcher.offset,hex2bin(newData))
-            --if not writeToFile(patcher.fileName, address+patcher.offset,hex2bin(newData)) then err("Could not write to file.") end
         elseif keyword == "gg" then
             local gg=data:upper()
             gg=util.split(data," ",1)[1] -- Let's allow stuff after the code for descriptions, etc.  figure out a better comment system later.
@@ -2156,13 +2173,11 @@ while true do
                     if c == b then
                         printf("    %04x",address)
                         patcher.write(address+patcher.offset,string.char(v))
-                        --if not writeToFile(patcher.fileName, address+patcher.offset,string.char(v)) then err("Could not write to file.") end
                     end
                     --printf("%04x %02x %02x",address+patcher.offset,b,c)
                 else
                     printf("    %04x",address)
                     patcher.write(address+patcher.offset,string.char(v))
-                    --if not writeToFile(patcher.fileName, address+patcher.offset,string.char(v)) then err("Could not write to file.") end
                 end
                 address=address+ 0x2000
                 if address > #patcher.fileData or address>=0x20000 then break end
@@ -2182,7 +2197,6 @@ while true do
             data = patcher.fileData:sub(address+1+patcher.offset,address+1+patcher.offset+l-1)
             print(string.format("Copying 0x%08x bytes from 0x%08x to 0x%08x",l, address, address2))
             patcher.write(address2+patcher.offset,data)
-            --if not writeToFile(patcher.fileName, address2+patcher.offset,data) then err("Could not write to file.") end
         elseif util.startsWith(line, "copy ") then
             local data=string.sub(line,6)
             local address = data:sub(1,(data:find(" ")))
@@ -2196,7 +2210,6 @@ while true do
             data = patcher.fileData:sub(address+1+patcher.offset,address+1+patcher.offset+l-1)
             print(string.format("Copying 0x%08x bytes from 0x%08x to 0x%08x",l, address, address2))
             patcher.write(address2+patcher.offset,data)
-            --if not writeToFile(patcher.fileName, address2+patcher.offset,data) then err("Could not write to file.") end
         elseif line=="break" or line == "quit" or line == "exit" then
             print("[break]")
             --break
@@ -2224,9 +2237,6 @@ while true do
                 print("find text FUTURE")
                 print("find text SCORE")
             end
-            
-        elseif line=="write all" then
-            --if not writeToFile(patcher.fileName, patcher.offset,patcher.fileData) then err("Could not write to file.") end
         elseif keyword=="makeips" then
             local f = util.trim(data)
             printf("Creating IPS patch: %s",f)
@@ -2366,7 +2376,6 @@ while true do
                 --printVerbose(string.format("replacing: 0x%08x %s", ips.offset, bin2hex(ips.replaceData))) -- MAKES IT HANG
                 printVerbose(string.format("0x%08x",ips.address))
                 patcher.write(ips.offset+patcher.offset,ips.replaceData)
-                --if not writeToFile(patcher.fileName, ips.offset+patcher.offset,ips.replaceData) then err("Could not write to file.") end
                 loopCount = loopCount+1
                 if loopCount >=loopLimit then
                     quit ("Error: Loop limit reached.")

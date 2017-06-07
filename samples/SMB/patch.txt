@@ -44,5 +44,4 @@ if cheats==true
     put 26f eaea
 end if
 
-makeips %newIPSFile%
 save %newFile%
