@@ -1,0 +1,4 @@
+oldFile = ../../backup/Super Mario Bros. (World).nes
+
+newFile = SMB test.nes
+//newFile = SMB test.ips

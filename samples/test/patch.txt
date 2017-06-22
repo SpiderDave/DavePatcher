@@ -1,0 +1,26 @@
+// Patch for testing various things
+
+// Load a NES game defined in config.txt so we can test things like 
+// the iNES header.
+include config.txt
+
+load %oldFile%
+
+// Offset by 0x10 for the iNES header
+offset 10
+
+// Test some automatic address stuff.  Note the value of special
+// variable "ADDRESS" after these operations.
+put 400 0505
+put * 01
+text * HI
+fill * 2 6363
+get * 10
+
+print ----------- Variables --------------
+list variables
+print ------------------------------------
+
+:end
+// We use break here so it doesn't automatically create an output file.
+break

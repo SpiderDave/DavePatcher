@@ -10,6 +10,7 @@
 --   * Clean up scope of variables
 --   * Add more asm set formats
 --   * Create example scripts
+--     *DONE* "SMB Chill" and "test" scripts so far.
 --   * Create ips patches and other possible patch formats
 --     + ips support done.  Needs RLE support.
 --   * Better control when importing and exporting graphics:
@@ -20,6 +21,7 @@
 --   * Improve "find text" to include unknown characters
 --   * Improve "find" to include unknown bytes
 --   * Tilemap setting for precise placement or grid
+--     *DONE* "gridsize" parameter in tilemaps makes this possible.
 --   * Allow textmap to be flexible for characters with multiple codes
 --   * search for locations of tiles using images
 --   * create gg codes
@@ -27,8 +29,11 @@
 --   * test/handle writes and reads outside length of file
 --   * allow patch addresses like 02:1200
 --   * allow variable assignment to use strings with spaces in them
+--     *DONE* must use "var" to do it.
 --   * allow graphics importing to use the closest color if it doesn't match exactly
 --   * multiple (named) textmaps
+--   * add output levels (verbose, silent, etc)
+--   * migrate some useful variables to the patcher's "special variables"
 
 -- Notes:
 --   * Keywords starting with _ are experimental or unfinished
@@ -66,7 +71,7 @@ local patcher = {
     gotoCount = 0,
     gotoLimit = 100,
     verbose = false,
-    showAnnotations = true,
+    annotations = false,
     interactive = false,
     prompt = "> ",
     tileMap={},
@@ -79,12 +84,13 @@ local patcher = {
     autoRefresh = false,
     outputFileName = "output.nes",
     strict=false,
+    breakLoop=false,
 }
 
 function patcher.getHeader(str)
     local str = str or patcher.fileData:sub(1,16)
     local header = {
-        id=str:sub(1,1+4),
+        id=str:sub(1,4),
         prg_rom_size=string.byte(str:sub(1+4,1+4)),
         chr_rom_size=string.byte(str:sub(1+5,1+5)),
         flags6=string.byte(str:sub(6,6)),
@@ -101,8 +107,7 @@ function patcher.getHeader(str)
         valid = true,
     }
     
-    if header.id~="NES"..string.byte(0x10) then header.valid=false end
-    
+    if header.id~="NES"..string.char(0x1a) then header.valid=false end
     patcher.variables["CHRSTART"]=header.prg_rom_size*0x4000
     patcher.variables["CHRSIZE"]=header.chr_rom_size*0x2000
     return header
@@ -194,6 +199,14 @@ end
 
 local util={}
 
+function util.switch(s, default)
+    s=util.trim(s)
+    if s == "true" or s == "on" then return true end
+    if s == "false" or s == "off" then return false end
+    if s == "" or s==nil then return default end
+    return nil, true
+end
+
 function util.startsWith(haystack, needle)
     return string.sub(haystack, 1, string.len(needle)) == needle
 end
@@ -214,6 +227,7 @@ util.stripSpaces = function(s)
 end
 
 function util.trim(s)
+    --if type(s)~="string" then return tostring(s) end
     if not s then return end
     return (s:gsub("^%s*(.-)%s*$", "%1"))
 end
@@ -640,7 +654,8 @@ space before the // like so:
     text 3400 FOOBAR  // set name to "FOOBAR "
     
 Lines starting with # are "annotations"; Annotations are comments that are
-shown in the output when running the patcher.
+shown in the output when running the patcher when annotations are on  See
+also "annotations" keyword.
     
     # This is an annotation
     
@@ -655,7 +670,13 @@ You can use %variable% for variables to make replacements in a line:
     # the quick brown %foobar% jumps over the lazy %baz%.
     
 Keywords are lowercase, usually followed by a space.  Some "keywords" consist
-of multiple words.  Possible keywords:
+of multiple words.  Keywords listed as accepting "on" or "off" as parameters 
+also accept "true" or "false".  If left blank, "on" is assumed.
+Keywords accepting <address> parameter may also accept "*" in place of an 
+address.  This uses the value of special variable "ADDRESS", which is set after
+most read or write operations.
+
+Possible keywords:
 
     help
     commands
@@ -683,6 +704,14 @@ of multiple words.  Possible keywords:
     get asm <address> <len>
         Get <len> bytes of data at <address> and analyze using 6502 opcodes,
         display formatted asm data.
+    
+    print <text>
+        Prints a line of text.
+    
+    start print
+    ...
+    end print
+        Prints everything inside the block.
     
     print asm <data>
         Analyze hexidecimal data <data> using 6502 opcodes, display formatted
@@ -802,6 +831,9 @@ of multiple words.  Possible keywords:
         export tile data to png file.
         Example:
             export 20010 100 tiles.png
+        Example:
+            # Exporting all tiles.  This will take a long time!
+            export %CHRSTART% %CHRSIZE% tiles.png
     
     import <address> <nTiles> <file>
         import tile data from png using current palette as a reference.
@@ -846,7 +878,7 @@ of multiple words.  Possible keywords:
         export tile data to png file using a tile map.
         Example:
             export map batman batman_sprite_test.png
-    
+        
     import map
         import tile data from png file using a tile map
         Example:
@@ -882,8 +914,10 @@ of multiple words.  Possible keywords:
         
     verbose [on | off]
         Turn verbose mode on or off.  This prints more information when using
-        various commands.  If verbose is used without a parameter, off is
-        assumed.
+        various commands.
+
+    annotations [on | off]
+        Turn annotations on or off.
         
     diff <file>
         Show differences between the current file and <file>
@@ -898,6 +932,11 @@ of multiple words.  Possible keywords:
         value.  You may also do variable assignment without using "var" if
         not in strict mode.
     
+    list variables
+        Show a list of all variables.  In addition to variables defined using
+        the "var" keyword, there are "special variables" that are set
+        automatically, so this is handy for finding them.
+    
     if <var>==<string>
     ...
     else
@@ -911,8 +950,7 @@ of multiple words.  Possible keywords:
         include another patch file as if it were inserted at this line.
     
     strict [on | off]
-        Turn strict mode on or off.  If strict is used without a parameter, on is
-        assumed.  In strict mode:
+        Turn strict mode on or off.  In strict mode:
         * "var" keyword is required for variable assignment.
         * break on all warnings.
         * disable auto save (see "save" keyword).
@@ -1058,9 +1096,28 @@ local patch = {
     includeLimit = 20,
 }
 
-function patch.load(file)
+function patch.load(file, opt)
+    --print(package.path)
+    
     local lines = {}
+    local opt = opt or {}
     file = file or patch.file
+    
+    if opt.extra then
+        for k,v in ipairs(opt.extra) do
+            if util.fileExists(v) then
+                patch.includeCount = patch.includeCount + 1
+                if patch.includeCount > patch.includeLimit then
+                    err("patch include limit exceeded.")
+                end
+                local l = patch.load(v)
+                for i = 1,#l do
+                    lines[#lines + 1] = l[i]
+                end
+            end
+        end
+    end
+    
     for line in io.lines(file) do
         if string.find(line," //") then
             -- remove comments with a space before them
@@ -1110,6 +1167,11 @@ function patcher.replaceVariables(line)
     patcher.variables["WDAY"] = string.format("%02d", d.wday)
     patcher.variables["GD"] = gd and "true" or "false"
     
+    patcher.variables["PALETTE"] = string.format("%02x%02x%02x%02x", patcher.colors[0],patcher.colors[1],patcher.colors[2],patcher.colors[3])
+    
+    -- experimental delayed expansion stuff
+    --line = string.gsub(line, "%$", "$%%")
+    
     -- variable replacement
     for k,v in pairs(patcher.variables) do
         if type(v) == "number" then
@@ -1117,6 +1179,9 @@ function patcher.replaceVariables(line)
         end
         line = string.gsub(line, "%%"..k.."%%", v)
     end
+    
+    --line = string.gsub(line, "%$", "%%")
+    
     return line
 end
 
@@ -1456,7 +1521,7 @@ end
 
 function tileToImage2(tileMap, fileName)
     local tm=patcher.tileMap[tileMap]
-    -- Image width and height according to the tilemap
+    -- get width and height large enough to fit the tilemap
     local w = tm.width
     local h = tm.height
     
@@ -1554,10 +1619,13 @@ end
 file_dumptext = nil
 
 if not patcher.interactive==true then
-    patch.load(arg[1] or "patch.txt")
+    local opt = {
+        _extra = {"default.txt"}
+    }
+    patch.load(arg[1] or "patch.txt", opt)
     print(patcher.help.info)
 end
-local breakLoop = false
+
 while true do
     local writeToFile = util.writeToFile
     local line
@@ -1610,27 +1678,22 @@ while true do
         end
         
         if util.startsWith(line, "#") then
-            if patcher.showAnnotations or patcher.verbose then
+            if patcher.annotations or patcher.verbose then
                 print(string.sub(line,1))
             end
+        elseif keyword == "print" then
+            print(data)
         elseif util.startsWith(line, "//") then
             -- comment
-        elseif util.startsWith(line, "verbose off") then
-            patcher.verbose = false
-            print("verbose off")
-        elseif util.startsWith(line, "verbose on") or line == "verbose" then
-            patcher.verbose = true
-            print("verbose on")
-        elseif keyword == "strict" then
-            data = util.trim(data or "on")
-            if data == "on" or data == "" then
-                patcher.strict = true
-                print("strict mode on")
-            elseif data == "off" then
-                patcher.strict = false
-                print("strict mode off")
+        elseif keyword == "verbose" or keyword == "strict" or keyword == "annotations" then
+            local err
+            patcher[keyword], err = util.switch(data, true)
+            if err then
+                warning('Invalid switch value for %s: "%s"',keyword, data)
+            elseif patcher[keyword] then 
+                printf("%s on", keyword)
             else
-                err("invalid strict mode %s",data)
+                printf("%s off", keyword)
             end
         elseif keyword == "test" then
             print("")
@@ -1817,6 +1880,9 @@ while true do
             local data=string.sub(line,5)
 
             local address = data:sub(1,(data:find(" ")))
+            if util.trim(address) == "*" then
+                address = patcher.variables["ADDRESS"] or "0" 
+            end
             address = util.toNumber(address)
             
             local len = data:sub((data:find(" ")+1))
@@ -1826,6 +1892,7 @@ while true do
             old=bin2hex(old)
             
             print(string.format("Hex data at 0x%08x: %s",address, old))
+            patcher.variables["ADDRESS"] = string.format("%x",address + #old/2)
         elseif util.startsWith(line, "find text ") then
             local txt=string.sub(line,11)
             address=0
@@ -1939,8 +2006,8 @@ while true do
             local tileData = imageToTile(len, fileName)
             
             patcher.write(address+patcher.offset,tileData)
-        elseif util.startsWith(line, "goto ") then
-            local label = util.trim(string.sub(line,6))
+        elseif keyword == "goto" then
+            local label = util.trim(data)
             patch.index = 1
             while true do
                 line = patch.readLine()
@@ -1950,8 +2017,7 @@ while true do
             if patcher.gotoCount >= patcher.gotoLimit then
                 err("goto limit reached (could be infinite loop).")
             end
-            
-        elseif util.startsWith(line, "skip") then
+        elseif keyword == "skip" then
             local nSkipped = 0
             while true do
                 nSkipped = nSkipped +1
@@ -1959,6 +2025,20 @@ while true do
                 if util.startsWith(line, "end skip") then break end
             end
             print(string.format("skipped %d lines.", nSkipped-1))
+        elseif util.startsWith(line, "start print") then
+            while true do
+                line = patch.readLine()
+                if util.startsWith(line, "end print") then break end
+                print(line)
+            end
+        elseif keyword == "list" and data == "variables" then
+            for k,v in pairs(patcher.variables) do
+                if type(v) == "number" then
+                    v = string.format("%x",v)
+                end
+                printf("%s = %s",k,v)
+            end
+            return line
         elseif keyword == "var" then
             local k,v = table.unpack(util.split(data, "="))
             k,v = util.trim(k), util.trim(v)
@@ -2074,6 +2154,11 @@ while true do
             f()
         elseif keyword == "text" then
             local address = data:sub(1,(data:find(" ")))
+
+            if util.trim(address) == "*" then
+                address = patcher.variables["ADDRESS"] or "0" 
+            end
+            
             address = tonumber(address, 16)
             txt=data:sub((data:find(" ")+1))
             print(string.format("Setting ascii text: 0x%08x: %s",address,txt))
@@ -2082,6 +2167,8 @@ while true do
             txt=mapText(txt)
             
             patcher.write(address+patcher.offset,txt)
+            
+            patcher.variables["ADDRESS"] = string.format("%x",address + #txt)
         elseif keyword == "textmap" then
             local mapOld = data:sub(1,(data:find(" ")-1))
             local mapNew = data:sub((data:find(" ")+1))
@@ -2099,7 +2186,11 @@ while true do
                 warning('depreciated keyword "hex". use "put" instead')
             end
             local address = data:sub(1,(data:find(" ")))
-            --address = tonumber(address, 16)
+            
+            if util.trim(address) == "*" then
+                address = patcher.variables["ADDRESS"] or "0" 
+            end
+            
             address = util.toNumber(address)
             local newData=data:sub((data:find(" ")+1))
             newData = util.stripSpaces(newData)
@@ -2108,8 +2199,15 @@ while true do
             old=bin2hex(old)
             printf("Setting bytes: 0x%08x: %s --> %s",address,old, newData)
             patcher.write(address+patcher.offset,hex2bin(newData))
+            
+            patcher.variables["ADDRESS"] = string.format("%x",address + #newData/2)
         elseif keyword == "fill" then
-            address = util.toNumber(util.split(data, " ", 1)[1])
+            address = util.split(data, " ", 1)[1]
+            if util.trim(address) == "*" then
+                address = patcher.variables["ADDRESS"] or "0" 
+            end
+            address = util.toNumber(address)
+            
             data = util.split(data, " ", 1)[2]
             fillCount = util.toNumber(util.split(data, " ", 1)[1])
             fillString = util.stripSpaces(util.split(data, " ", 1)[2])
@@ -2118,6 +2216,7 @@ while true do
             local newData = string.rep(fillString, fillCount)
             printVerbose("Fill data: 0x%08x: %s",address, newData)
             patcher.write(address+patcher.offset,hex2bin(newData))
+            patcher.variables["ADDRESS"] = string.format("%x",address + #newData/2)
         elseif keyword == "gg" then
             local gg=data:upper()
             gg=util.split(data," ",1)[1] -- Let's allow stuff after the code for descriptions, etc.  figure out a better comment system later.
@@ -2213,7 +2312,8 @@ while true do
         elseif line=="break" or line == "quit" or line == "exit" then
             print("[break]")
             --break
-            breakLoop=true
+            patcher.breakLoop=true
+            patcher.breakType = keyword
         elseif keyword=="refresh" then
             if data == "auto" then
                 patcher.autoRefresh = true
@@ -2263,6 +2363,7 @@ while true do
             patcher.offset = tonumber(data, 16)
             print("Setting offset: "..data)
         elseif keyword == "palette" then
+            data = util.trim(data)
             if util.startsWith(data, "file") then
                 local fileName = util.split(data, " ", 1)[2]
                 local fileData = getfilecontents(fileName)
@@ -2394,6 +2495,8 @@ while true do
                 quit("Error: README update failed.")
             end
         elseif line == "" then
+        elseif util.startsWith(line, ":") then
+            -- label, pass.
         elseif (assignment == true) and (patcher.strict~=true) then
             patcher.variables[keyword] = util.trim(data)
             printf('Variable: %s = "%s"', keyword, data)
@@ -2415,7 +2518,7 @@ while true do
     else
         quit(err)
     end
-    if breakLoop==true then
+    if patcher.breakLoop==true then
         break
     end
 end
@@ -2425,14 +2528,15 @@ end
 if patcher.saved then
     printf('Patching complete.  Output to file "%s"', patcher.outputFileName)
 else
-    if patcher.strict then
+    if patcher.strict or patcher.breakType == "break" then
         -- In strict mode, require an explicit save
+        -- If break is used, don't save.
         printf("done.")
     else
         patcher.save()
+        -- Save if not in strict mode and quit or exit is used.
         printf('Patching complete.  Output to file "%s"', patcher.outputFileName)
     end
 end
-
 
 printVerbose(string.format("\nelapsed time: %.2f\n", os.clock() - executionTime))

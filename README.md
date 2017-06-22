@@ -1,5 +1,5 @@
 ```
-DavePatcher v2017.06.07 beta - SpiderDave https://github.com/SpiderDave/DavePatcher
+DavePatcher v2017.06.22 beta - SpiderDave https://github.com/SpiderDave/DavePatcher
 A custom patcher for use with NES romhacking or general use.
 
 
@@ -21,7 +21,8 @@ space before the // like so:
     text 3400 FOOBAR  // set name to "FOOBAR "
     
 Lines starting with # are "annotations"; Annotations are comments that are
-shown in the output when running the patcher.
+shown in the output when running the patcher when annotations are on  See
+also "annotations" keyword.
     
     # This is an annotation
     
@@ -36,7 +37,13 @@ You can use %variable% for variables to make replacements in a line:
     # the quick brown %foobar% jumps over the lazy %baz%.
     
 Keywords are lowercase, usually followed by a space.  Some "keywords" consist
-of multiple words.  Possible keywords:
+of multiple words.  Keywords listed as accepting "on" or "off" as parameters 
+also accept "true" or "false".  If left blank, "on" is assumed.
+Keywords accepting <address> parameter may also accept "*" in place of an 
+address.  This uses the value of special variable "ADDRESS", which is set after
+most read or write operations.
+
+Possible keywords:
 
     help
     commands
@@ -64,6 +71,14 @@ of multiple words.  Possible keywords:
     get asm <address> <len>
         Get <len> bytes of data at <address> and analyze using 6502 opcodes,
         display formatted asm data.
+    
+    print <text>
+        Prints a line of text.
+    
+    start print
+    ...
+    end print
+        Prints everything inside the block.
     
     print asm <data>
         Analyze hexidecimal data <data> using 6502 opcodes, display formatted
@@ -183,6 +198,9 @@ of multiple words.  Possible keywords:
         export tile data to png file.
         Example:
             export 20010 100 tiles.png
+        Example:
+            # Exporting all tiles.  This will take a long time!
+            export %CHRSTART% %CHRSIZE% tiles.png
     
     import <address> <nTiles> <file>
         import tile data from png using current palette as a reference.
@@ -227,7 +245,7 @@ of multiple words.  Possible keywords:
         export tile data to png file using a tile map.
         Example:
             export map batman batman_sprite_test.png
-    
+        
     import map
         import tile data from png file using a tile map
         Example:
@@ -263,8 +281,10 @@ of multiple words.  Possible keywords:
         
     verbose [on | off]
         Turn verbose mode on or off.  This prints more information when using
-        various commands.  If verbose is used without a parameter, off is
-        assumed.
+        various commands.
+
+    annotations [on | off]
+        Turn annotations on or off.
         
     diff <file>
         Show differences between the current file and <file>
@@ -279,6 +299,11 @@ of multiple words.  Possible keywords:
         value.  You may also do variable assignment without using "var" if
         not in strict mode.
     
+    list variables
+        Show a list of all variables.  In addition to variables defined using
+        the "var" keyword, there are "special variables" that are set
+        automatically, so this is handy for finding them.
+    
     if <var>==<string>
     ...
     else
@@ -292,8 +317,7 @@ of multiple words.  Possible keywords:
         include another patch file as if it were inserted at this line.
     
     strict [on | off]
-        Turn strict mode on or off.  If strict is used without a parameter, on is
-        assumed.  In strict mode:
+        Turn strict mode on or off.  In strict mode:
         * "var" keyword is required for variable assignment.
         * break on all warnings.
         * disable auto save (see "save" keyword).
