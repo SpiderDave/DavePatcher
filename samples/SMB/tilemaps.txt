@@ -161,8 +161,8 @@ end tilemap
 
 start tilemap goomba
     address = 8000
-    70 0 0
-    71 1 0
-    72 0 1
-    73 1 1
+    70 0 c
+    71 1 c
+    72 0 d
+    73 1 d
 end tilemap

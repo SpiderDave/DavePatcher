@@ -10,16 +10,20 @@ offset 10
 
 include tilemaps.txt
 
-//palette 0f162718
-//export map mario mario.png
+skip
+    palette 0f162718
+    export map mario mario.png
+    palette 220f3617
+    export map goomba mario.png
+end skip
 
 // Import Dude Mario graphics with the correct palette
 palette 0f372718
-import map mario dude_mario.png
+import map mario mario_chill.png
 
 // Import Cool Goomba graphics
 palette 220f3617
-import map goomba cool_goomba.png
+import map goomba mario_chill.png
 
 // Set Mario palette
 put 5d8 372718
