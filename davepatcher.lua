@@ -688,7 +688,7 @@ Possible keywords:
     save <file>
         Save data to <file>.  If the file ends in ".ips" it will save the data 
         as an ips patch.  If save isn't used in the patch it will automatically
-        save at the end of the patch, unless in strict mode.
+        save at the end of the patch, unless strict mode is on or break is used.
     
     file <file>
         Changes the file but does not refresh the data.
@@ -780,12 +780,12 @@ Possible keywords:
     skip
     ...
     end skip
-        skip this section.  You may put text after skip and end.
+        skip this section.
         Example:
-        skip -------------
-        // unstable
-        put 10000 55
-        end skip ---------
+        skip
+            // unstable
+            put 10000 55
+        end skip
     
     break
         Use this to end the patch early.  Handy if you want to add some
@@ -884,11 +884,10 @@ Possible keywords:
         Example:
             import map batman batman_sprite_test.png
     
-    gg <gg code> [anything]
-        decode and apply a NES Game Genie code.  If there is a space after the
-        code you may add whatever text you like, as a convenience.
+    gg <gg code>
+        decode and apply a NES Game Genie code.
         Example:
-            gg SZNZVOVK        Infinite bombs
+            gg SZNZVOVK        // Infinite bombs
         
     refresh
         refreshes the data so that keywords like "find text" will use the new
@@ -947,7 +946,9 @@ Possible keywords:
         is supported.
     
     include <file>
-        include another patch file as if it were inserted at this line.
+        include another patch file as if it were inserted at this line. There
+        are some limitations with this, as it's parsed differently than the
+        rest of the script so it can be loaded at the start.
     
     strict [on | off]
         Turn strict mode on or off.  In strict mode:
