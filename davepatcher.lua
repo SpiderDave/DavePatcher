@@ -55,6 +55,21 @@ math.randomseed(os.time ()) math.random() math.random() math.random()
 
 --local winapi = require("winapi")
 
+local rand
+local rng
+
+if not pcall(function()
+    rand = require("include.random")
+    rng = rand.newRandomGenerator()
+    rng:setSeed(math.random(65536))
+end) then
+    rand = false
+    rng = {
+        random = function(self, ...) return math.random(...) end
+    }
+    print("could not load custom random library, using fallback.")
+end
+
 version = version or {stage="",date="?",time="?"}
 
 local patcher = {
@@ -766,6 +781,12 @@ Possible keywords:
     find hex <data>
         (depreciated) same as find
         
+    replace <finddata> <replacedata> [<limit>]
+        Find and replace data in hexidecimal with an optional limit in hexidecimal.
+        Examples:
+            replace a9008d35 a9048d35
+            replace a9058d30 a9638d30
+            
     textmap <characters> <map to>
         Map text characters to specific values.  These will be used in other
         commands like the "text" command.
@@ -945,6 +966,13 @@ Possible keywords:
         limited.  Can not be nested currently, only comparison with string
         is supported.
     
+    choose <string>
+        randomly selects an item in <string> separated by spaces and puts the
+        result in the variable "CHOICE".
+        Example:
+            choose apple banana orange potato
+            print %choice%
+            
     include <file>
         include another patch file as if it were inserted at this line. There
         are some limitations with this, as it's parsed differently than the
@@ -1064,6 +1092,7 @@ util.sandbox.loadCode = function(self, code)
     end
 end
 
+
 function quit(text,...)
   if text then printf(text,...) end
   os.exit()
@@ -1170,6 +1199,19 @@ function patcher.replaceVariables(line)
     
     patcher.variables["PALETTE"] = string.format("%02x%02x%02x%02x", patcher.colors[0],patcher.colors[1],patcher.colors[2],patcher.colors[3])
     
+    -- using a closure thing here
+    local f = function(k)
+        return function()
+            patcher.variables["RANDOMBYTE"]=rng:random(0,255)
+            v = patcher.variables[k]
+            if type(v) == "number" then
+                v = string.format("%x",v)
+            end
+
+            return v
+        end
+    end
+    
     -- experimental delayed expansion stuff
     --line = string.gsub(line, "%$", "$%%")
     
@@ -1178,20 +1220,48 @@ function patcher.replaceVariables(line)
         if type(v) == "number" then
             v = string.format("%x",v)
         end
-        line = string.gsub(line, "%%"..k.."%%", v)
+        line = string.gsub(line, "%%"..k.."%%", f(k))
     end
     
     --line = string.gsub(line, "%$", "%%")
-    
     return line
 end
 
-function patch.readLine()
+function patch.parseLine(line)
+    
+    line = patcher.replaceVariables(line)
+    
+    local keyword, data
+    keyword, data = unpack(util.split(line," ",1))
+    keyword=keyword:lower()
+
+    local assignment = false
+    
+    if #util.split(line, "=",1)>1  then
+        local k, d = unpack(util.split(line,"=",1))
+        k = util.trim(k)
+        if #util.split(k, " ",1)==1 then
+            keyword = k
+            data = d
+            assignment = true
+        end
+    end
+
+    return line, {keyword=keyword, data=data, assignment=assignment}
+end
+
+
+
+function patch.readLine(replaceVariables)
+    if replaceVariables == nil then replaceVariables = true end
     if patch.index > #patch.lines then return nil end
 
     local line = patch.lines[patch.index]
     line = util.ltrim(line)
-    line = patcher.replaceVariables(line)
+    
+    if replaceVariables == true then
+        line = patcher.replaceVariables(line)
+    end
     
     patch.index = patch.index + 1
 
@@ -1576,7 +1646,6 @@ function tileToImage2(tileMap, fileName)
     image:png(fileName)
 end
 
-
 if arg[1]=="-readme" then
     if (util.writeToFile("README.md",0,"```\n"..patcher.help.info .."\n".. patcher.help.description .."\n\n"..patcher.help.extra.."\n\n".. patcher.help.commands.."\n```")) then
         print("README updated")
@@ -1633,34 +1702,42 @@ while true do
     if patcher.interactive==true then
         io.write(patcher.prompt)
         line = io.stdin:read("*l")
-        line = patcher.replaceVariables(line)
+        --line = patcher.replaceVariables(line)
     else
-        line = patch.readLine()
+        line = patch.readLine(false)
     end
     if line == nil then break end
     local status, err = pcall(function()
     
-    local keyword, data = unpack(util.split(line," ",1))
-    local assignment = false
+    local opt
+    line, opt = patch.parseLine(line)
     
-    keyword=keyword:lower()
+    local keyword = opt.keyword
+    local data = opt.data
+    local assignment = opt.assignment
     
-    if #util.split(line, "=",1)>1  then
-        local k, d = unpack(util.split(line,"=",1))
-        k = util.trim(k)
-        if #util.split(k, " ",1)==1 then
-            keyword = k
-            data = d
-            assignment = true
-        end
-    end
+    
+--    local keyword, data = unpack(util.split(line," ",1))
+--    local assignment = false
+    
+--    keyword=keyword:lower()
+    
+--    if #util.split(line, "=",1)>1  then
+--        local k, d = unpack(util.split(line,"=",1))
+--        k = util.trim(k)
+--        if #util.split(k, " ",1)==1 then
+--            keyword = k
+--            data = d
+--            assignment = true
+--        end
+--    end
     
     patcher.lineQueue={}
     if keyword == "repeat" then
         patcher.lineQueue.r = util.toNumber(data)
         printf("repeat %02x",patcher.lineQueue.r)
         while true do
-            line = patch.readLine()
+            line = patch.readLine(false)
             keyword,data = unpack(util.split(line," ",1))
             keyword=keyword:lower()
             --if keyword == "end repeat" then break end
@@ -1674,8 +1751,22 @@ while true do
     for lineRepeat = 1, patcher.lineQueue.r or 1 do
     for r=1,math.max(#patcher.lineQueue, 1) do
         if #patcher.lineQueue>=1 then
+            --patcher.lineQueue[r].line = patcher.replaceVariables(patcher.lineQueue[r].line)
             line=patcher.lineQueue[r].line
-            keyword,data=patcher.lineQueue[r].keyword,patcher.lineQueue[r].data
+            --line = patcher.replaceVariables(line)
+            
+            --keyword,data = unpack(util.split(line," ",1))
+            --keyword=keyword:lower()
+            
+            local opt
+            line, opt = patch.parseLine(line)
+            
+            keyword = opt.keyword
+            data = opt.data
+            assignment = opt.assignment
+            
+            
+            --keyword,data=patcher.lineQueue[r].keyword,patcher.lineQueue[r].data
         end
         
         if util.startsWith(line, "#") then
@@ -1684,6 +1775,10 @@ while true do
             end
         elseif keyword == "print" then
             print(data)
+        elseif keyword == "choose" then
+            local choice = util.split(data," ")
+            choice = choice[rng:random(1, #choice)]
+            patcher.variables.choice = choice
         elseif util.startsWith(line, "//") then
             -- comment
         elseif keyword == "verbose" or keyword == "strict" or keyword == "annotations" then
@@ -1802,10 +1897,13 @@ while true do
             printf("")
         --elseif startsWith(line:lower(), "replace hex ") then
         elseif keyword == "replace" then
-            
+            local limit = 50
             if util.split(util.ltrim(data), " ",1)[1]=="hex" then
                 data = util.split(util.ltrim(data), " ",1)[2]
                 warning('depreciated keyword "replace hex". use "replace" instead')
+            elseif util.split(util.ltrim(data), " ",1)[1]=="limit" then
+                --limit = util.trim(util.split(util.ltrim(data), " ")[2])
+                --data = util.split(util.ltrim(data), " ",2)[3]
             end
             data = util.ltrim(data)
             
@@ -1815,7 +1913,7 @@ while true do
             local replaceValue = util.split(data," ")[2]
             
             local nResults = 0
-            local limit = 50
+            
             if util.split(data, " ")[3] then
                 limit = tonumber(util.split(data, " ")[3],16)
             end
@@ -2041,7 +2139,7 @@ while true do
             end
             return line
         elseif keyword == "var" then
-            local k,v = table.unpack(util.split(data, "="))
+            local k,v = table.unpack(util.split(data, "=", 1))
             k,v = util.trim(k), util.trim(v)
             patcher.variables[k] = v
             printf('Variable: %s = "%s"', k, v)

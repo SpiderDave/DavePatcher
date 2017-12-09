@@ -1,5 +1,5 @@
 ```
-DavePatcher v2017.06.22 beta - SpiderDave https://github.com/SpiderDave/DavePatcher
+DavePatcher v2017.12.08 beta - SpiderDave https://github.com/SpiderDave/DavePatcher
 A custom patcher for use with NES romhacking or general use.
 
 
@@ -133,6 +133,12 @@ Possible keywords:
     find hex <data>
         (depreciated) same as find
         
+    replace <finddata> <replacedata> [<limit>]
+        Find and replace data in hexidecimal with an optional limit in hexidecimal.
+        Examples:
+            replace a9008d35 a9048d35
+            replace a9058d30 a9638d30
+            
     textmap <characters> <map to>
         Map text characters to specific values.  These will be used in other
         commands like the "text" command.
@@ -312,6 +318,13 @@ Possible keywords:
         limited.  Can not be nested currently, only comparison with string
         is supported.
     
+    choose <string>
+        randomly selects an item in <string> separated by spaces and puts the
+        result in the variable "CHOICE".
+        Example:
+            choose apple banana orange potato
+            print %choice%
+            
     include <file>
         include another patch file as if it were inserted at this line. There
         are some limitations with this, as it's parsed differently than the
