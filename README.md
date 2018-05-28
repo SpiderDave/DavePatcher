@@ -1,5 +1,5 @@
 ```
-DavePatcher v2017.12.08 beta - SpiderDave https://github.com/SpiderDave/DavePatcher
+DavePatcher v2018.05.28 beta - SpiderDave https://github.com/SpiderDave/DavePatcher
 A custom patcher for use with NES romhacking or general use.
 
 
@@ -19,6 +19,15 @@ automatically, so if you need whitespace in your command, add an extra
 space before the // like so:
     
     text 3400 FOOBAR  // set name to "FOOBAR "
+    
+You can do a block level comment by enclosing lines in /* */ like this:
+    
+    /*
+    put 1200 a963 // set lives to 99
+    */
+    
+You can't nest comments with /* */ but you can use the skip keyword to
+accomplish this.
     
 Lines starting with # are "annotations"; Annotations are comments that are
 shown in the output when running the patcher when annotations are on  See
@@ -153,13 +162,15 @@ Possible keywords:
     skip
     ...
     end skip
-        skip this section.
+        Skip this section.  This is similar to /* */ comments.  For
+        readability, it is recommended to use the skip keyword if
+        you want to do conditional skip/end skip
         Example:
         skip
             // unstable
             put 10000 55
         end skip
-    
+        
     break
         Use this to end the patch early.  Handy if you want to add some
         testing stuff at the bottom.
@@ -199,6 +210,12 @@ Possible keywords:
         set the current 4-color palette from a hexidecimal string.
         Example:
             palette 0f182737
+            
+    palette auto
+        use preferred palette defined in tilemap when exporting
+    
+    palette manual
+        ignore preferred palette defined in tilemap when exporting
     
     export <address> <nTiles> <file>
         export tile data to png file.
@@ -221,6 +238,10 @@ Possible keywords:
         
         address = <address>
             Set the address for the tile map.
+        palette = <palette>
+            Set the preferred palette for the tile map.
+            Example:
+                palette = 0030270f
         gridsize = <size>
             Set the grid size to <size>.  This determines what the x and y values
             of each tile map entry is multiplied by (default is 8).
@@ -302,7 +323,8 @@ Possible keywords:
     var <var name> = <string>
         A basic variable assignment.  Currently you can only assign a string
         value.  You may also do variable assignment without using "var" if
-        not in strict mode.
+        not in strict mode, but if the variable name contains a space, you
+        must use the var keyword.
     
     list variables
         Show a list of all variables.  In addition to variables defined using
@@ -323,7 +345,7 @@ Possible keywords:
         result in the variable "CHOICE".
         Example:
             choose apple banana orange potato
-            print %choice%
+            print %CHOICE%
             
     include <file>
         include another patch file as if it were inserted at this line. There

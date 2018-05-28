@@ -1,7 +1,7 @@
 -- 
 --
---                      WARNING: SLOPPY CODE
 --                 ABANDON HOPE ALL YE WHO ENTER HERE
+--                      (WARNING: SLOPPY CODE)
 --
 -----------------------------------------------------------------------------
 
@@ -14,10 +14,10 @@
 --   * Create ips patches and other possible patch formats
 --     + ips support done.  Needs RLE support.
 --   * Better control when importing and exporting graphics:
---     + Export to image without overwriting image 
---       *DONE*
 --     + Set palette for each tilemap
+--       *DONE* via "palette auto"
 --   * Rework repeat so the repeated lines are evaluated for each iteration, not once
+--       *DONE*
 --   * Improve "find text" to include unknown characters
 --   * Improve "find" to include unknown bytes
 --   * Tilemap setting for precise placement or grid
@@ -28,8 +28,6 @@
 --   * comment code better
 --   * test/handle writes and reads outside length of file
 --   * allow patch addresses like 02:1200
---   * allow variable assignment to use strings with spaces in them
---     *DONE* must use "var" to do it.
 --   * allow graphics importing to use the closest color if it doesn't match exactly
 --   * multiple (named) textmaps
 --   * add output levels (verbose, silent, etc)
@@ -72,6 +70,10 @@ end
 
 version = version or {stage="",date="?",time="?"}
 
+local allow_plugins = false
+local plugins = {
+}
+
 local patcher = {
     info = {
         name = "DavePatcher",
@@ -101,6 +103,16 @@ local patcher = {
     strict=false,
     breakLoop=false,
 }
+
+
+function patcher.setPalette(p)
+    if #p~=8 then return false end
+    for i=0,3 do
+        patcher.colors[i]=tonumber(string.sub(p,i*2+1,i*2+2),16)
+    end
+    patcher.variables["PALETTE"] = string.format("%02x%02x%02x%02x", patcher.colors[0],patcher.colors[1],patcher.colors[2],patcher.colors[3])
+end
+
 
 function patcher.getHeader(str)
     local str = str or patcher.fileData:sub(1,16)
@@ -213,6 +225,31 @@ end
 
 
 local util={}
+
+
+function util.keys(t)
+    local keys={}
+    local ikeys={}
+    for k,v in pairs(t) do
+        if type(k)=="string" then
+            keys[#keys+1]=k
+        elseif type(k)=="number" then
+            ikeys[#ikeys+1]=k
+        end
+    end
+
+    table.sort(keys)
+    table.sort(ikeys)
+    
+    local newTable = {}
+    for k,v in pairs(ikeys) do
+      newTable[#newTable+1]=v
+    end
+    for k,v in pairs(keys) do
+      newTable[#newTable+1]=v
+    end
+    return newTable
+end
 
 function util.switch(s, default)
     s=util.trim(s)
@@ -668,6 +705,15 @@ space before the // like so:
     
     text 3400 FOOBAR  // set name to "FOOBAR "
     
+You can do a block level comment by enclosing lines in /* */ like this:
+    
+    /*
+    put 1200 a963 // set lives to 99
+    */
+    
+You can't nest comments with /* */ but you can use the skip keyword to
+accomplish this.
+    
 Lines starting with # are "annotations"; Annotations are comments that are
 shown in the output when running the patcher when annotations are on  See
 also "annotations" keyword.
@@ -801,13 +847,15 @@ Possible keywords:
     skip
     ...
     end skip
-        skip this section.
+        Skip this section.  This is similar to /* */ comments.  For
+        readability, it is recommended to use the skip keyword if
+        you want to do conditional skip/end skip
         Example:
         skip
             // unstable
             put 10000 55
         end skip
-    
+        
     break
         Use this to end the patch early.  Handy if you want to add some
         testing stuff at the bottom.
@@ -847,6 +895,12 @@ Possible keywords:
         set the current 4-color palette from a hexidecimal string.
         Example:
             palette 0f182737
+            
+    palette auto
+        use preferred palette defined in tilemap when exporting
+    
+    palette manual
+        ignore preferred palette defined in tilemap when exporting
     
     export <address> <nTiles> <file>
         export tile data to png file.
@@ -869,6 +923,10 @@ Possible keywords:
         
         address = <address>
             Set the address for the tile map.
+        palette = <palette>
+            Set the preferred palette for the tile map.
+            Example:
+                palette = 0030270f
         gridsize = <size>
             Set the grid size to <size>.  This determines what the x and y values
             of each tile map entry is multiplied by (default is 8).
@@ -950,7 +1008,8 @@ Possible keywords:
     var <var name> = <string>
         A basic variable assignment.  Currently you can only assign a string
         value.  You may also do variable assignment without using "var" if
-        not in strict mode.
+        not in strict mode, but if the variable name contains a space, you
+        must use the var keyword.
     
     list variables
         Show a list of all variables.  In addition to variables defined using
@@ -971,7 +1030,7 @@ Possible keywords:
         result in the variable "CHOICE".
         Example:
             choose apple banana orange potato
-            print %choice%
+            print %CHOICE%
             
     include <file>
         include another patch file as if it were inserted at this line. There
@@ -1091,7 +1150,6 @@ util.sandbox.loadCode = function(self, code)
         return assert(load(code, nil,"t",environment))
     end
 end
-
 
 function quit(text,...)
   if text then printf(text,...) end
@@ -1592,6 +1650,9 @@ end
 
 function tileToImage2(tileMap, fileName)
     local tm=patcher.tileMap[tileMap]
+    
+    if not tm then return false, "Invalid tilemap "..tileMap end
+    
     -- get width and height large enough to fit the tilemap
     local w = tm.width
     local h = tm.height
@@ -1644,6 +1705,7 @@ function tileToImage2(tileMap, fileName)
         --printf("tilemap index=%02x tileNum=%02x pos=(%02x,%02x) %02x %s",i,tm[i].tileNum, tm[i].x,tm[i].y,address,bin2hex(tileData))
     end
     image:png(fileName)
+    return true
 end
 
 if arg[1]=="-readme" then
@@ -1778,7 +1840,7 @@ while true do
         elseif keyword == "choose" then
             local choice = util.split(data," ")
             choice = choice[rng:random(1, #choice)]
-            patcher.variables.choice = choice
+            patcher.variables['CHOICE'] = choice
         elseif util.startsWith(line, "//") then
             -- comment
         elseif keyword == "verbose" or keyword == "strict" or keyword == "annotations" then
@@ -2061,7 +2123,21 @@ while true do
             end
             local dummy, dummy, tileMap, fileName=unpack(util.split(line," ",3))
             printf("exporting tile map %s to %s",tileMap, fileName)
-            tileToImage2(tileMap, fileName)
+            local oldPalette
+            if patcher.autoPalette and patcher.tileMap[tileMap].palette then
+                oldPalette = patcher.variables["PALETTE"]
+                patcher.setPalette(patcher.tileMap[tileMap].palette)
+            end
+            
+            local success, err = tileToImage2(tileMap, fileName)
+            
+            if patcher.autoPalette and patcher.tileMap[tileMap].palette then
+                patcher.setPalette(oldPalette)
+            end
+            
+            if not success then
+                printf("Error: %s",err)
+            end
         elseif util.startsWith(line, "export ") then
             if not gd then
                 err("could not use export command because gd did not load.")
@@ -2124,6 +2200,16 @@ while true do
                 if util.startsWith(line, "end skip") then break end
             end
             print(string.format("skipped %d lines.", nSkipped-1))
+        elseif util.startsWith(line, "/*") then
+            local nSkipped = 0
+            while true do
+                nSkipped = nSkipped +1
+                line = patch.readLine()
+                if util.endsWith(line, "*/") then
+                    break
+                end
+            end
+            --print(string.format("skipped %d lines.", nSkipped-1))
         elseif util.startsWith(line, "start print") then
             while true do
                 line = patch.readLine()
@@ -2131,13 +2217,19 @@ while true do
                 print(line)
             end
         elseif keyword == "list" and data == "variables" then
-            for k,v in pairs(patcher.variables) do
+            for _,k in pairs(util.keys(patcher.variables)) do
+                local v = patcher.variables[k]
                 if type(v) == "number" then
                     v = string.format("%x",v)
                 end
                 printf("%s = %s",k,v)
             end
-            return line
+--            for k,v in pairs(patcher.variables) do
+--                if type(v) == "number" then
+--                    v = string.format("%x",v)
+--                end
+--                printf("%s = %s",k,v)
+--            end
         elseif keyword == "var" then
             local k,v = table.unpack(util.split(data, "=", 1))
             k,v = util.trim(k), util.trim(v)
@@ -2210,6 +2302,9 @@ while true do
                         --printf("%s=%s",k,v)
                         address = tonumber(v,16)
                     end
+                    if k == "palette" then
+                        tm.palette = v
+                    end
                     if k == "gridsize" then
                         gridSize = tonumber(v,16)
                     end
@@ -2249,8 +2344,16 @@ while true do
             local f=util.sandbox:loadCode(data)
             f()
         elseif keyword == "plugin" then
-            local f=util.sandbox:loadCode(data)
-            f()
+            if allowPlugins ~= true then
+                err('allowPlugins = false.')
+            end
+            data=util.trim(data)
+            local plugin = require(data)
+            plugins[data] = plugin
+            printf("loading plugin: %s.", data)
+            if plugin.init then plugin.init() end
+            --local f=util.sandbox:loadCode(data)
+            --f()
         elseif keyword == "text" then
             local address = data:sub(1,(data:find(" ")))
 
@@ -2463,7 +2566,11 @@ while true do
             print("Setting offset: "..data)
         elseif keyword == "palette" then
             data = util.trim(data)
-            if util.startsWith(data, "file") then
+            if util.startsWith(data, "auto") then
+                patcher.autoPalette = true
+            elseif util.startsWith(data, "manual") then
+                patcher.autoPalette = false
+            elseif util.startsWith(data, "file") then
                 local fileName = util.split(data, " ", 1)[2]
                 local fileData = getfilecontents(fileName)
                 
