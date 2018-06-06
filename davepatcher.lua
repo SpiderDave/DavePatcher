@@ -306,6 +306,27 @@ util.toNumber = function(s, hint)
     return n
 end
 
+util.toAddress = function(a)
+    if util.trim(a) == "*" then
+        a = patcher.variables["ADDRESS"] or "0" 
+    end
+    a = util.toNumber(a)
+    return a
+end
+
+util.isTrue = function(n)
+    if tonumber(n) == 0 then return nil end
+    if n == "" then return nil end
+    if n then return true end
+    return nil
+end
+
+util.isEqual = function(a,b)
+    if a==b then return true end
+    if (tonumber(a)~=nil and tonumber(b)~=nil) and (tonumber(a)==tonumber(b)) then return true end
+    return nil
+end
+
 printf = util.printf
 
 util.random = math.random
@@ -711,8 +732,8 @@ You can do a block level comment by enclosing lines in /* */ like this:
     put 1200 a963 // set lives to 99
     */
     
-You can't nest comments with /* */ but you can use the skip keyword to
-accomplish this.
+You can't nest comments with /* */ but you can use the /** and **/ instead
+to accomplish this.  Nested comments are messy, and should be avoided.
     
 Lines starting with # are "annotations"; Annotations are comments that are
 shown in the output when running the patcher when annotations are on  See
@@ -865,6 +886,8 @@ Possible keywords:
         Example:
             goto foobar
             :foobar
+        If there are multiple labels, it will go to the next one, and
+        start at the beginning if not found.
         
     start <address>
         Set the starting address for commands
@@ -985,7 +1008,8 @@ Possible keywords:
             code print("Hello World!")
         
     eval
-        Evaluate Lua expression and print the result
+        Evaluate Lua expression and print the result.  The result will also be
+        stored in the variable "RESULT".
         Examples:
             eval "Hello World!"
             eval 5+5*2^10
@@ -1010,20 +1034,24 @@ Possible keywords:
         value.  You may also do variable assignment without using "var" if
         not in strict mode, but if the variable name contains a space, you
         must use the var keyword.
+    num <var name> = <number>
+        variable assignment to a number type
     
     list variables
         Show a list of all variables.  In addition to variables defined using
         the "var" keyword, there are "special variables" that are set
         automatically, so this is handy for finding them.
     
-    if <var>==<string>
+    if <var>[==<variable>]
     ...
     else
     ...
     end if
-        A basic if, else, end if block.  "else" is optional, and it's very 
-        limited.  Can not be nested currently, only comparison with string
-        is supported.
+        A basic if, else, end if block.  "else" is optional.  if..then blocks
+        are whitespace-aware and can be nested.  For comparison purposes, 
+        numeric strings are equal to numbers, and for truth testing, 0
+        or the empty string "" is considered false (though "" is not equal
+        to 0).
     
     choose <string>
         randomly selects an item in <string> separated by spaces and puts the
@@ -1226,7 +1254,7 @@ function patch.load(file, opt)
         
         if util.trim(line or "") == "" then
             --ignore empty lines
-        elseif util.split(line," ",1)[1] == "include" then
+        elseif util.split(line," ",1)[1] == "_include" then
             patch.includeCount = patch.includeCount + 1
             if patch.includeCount > patch.includeLimit then
                 err("patch include limit exceeded.")
@@ -1240,6 +1268,7 @@ function patch.load(file, opt)
             lines[#lines + 1] = line
         end
     end
+    if opt.returnOnly then return lines end
     patch.lines = lines
     return lines
 end
@@ -1286,7 +1315,6 @@ function patcher.replaceVariables(line)
 end
 
 function patch.parseLine(line)
-    
     line = patcher.replaceVariables(line)
     
     local keyword, data
@@ -1297,6 +1325,7 @@ function patch.parseLine(line)
     
     if #util.split(line, "=",1)>1  then
         local k, d = unpack(util.split(line,"=",1))
+        
         k = util.trim(k)
         if #util.split(k, " ",1)==1 then
             keyword = k
@@ -1315,6 +1344,7 @@ function patch.readLine(replaceVariables)
     if patch.index > #patch.lines then return nil end
 
     local line = patch.lines[patch.index]
+    local indent = #line-#util.ltrim(line)
     line = util.ltrim(line)
     
     if replaceVariables == true then
@@ -1322,8 +1352,8 @@ function patch.readLine(replaceVariables)
     end
     
     patch.index = patch.index + 1
-
-    return line
+    
+    return line, {indent=indent}
 end
 
 function util.fileExists(name)
@@ -1761,38 +1791,25 @@ end
 while true do
     local writeToFile = util.writeToFile
     local line
+    local opt = {indent=0}
     if patcher.interactive==true then
         io.write(patcher.prompt)
         line = io.stdin:read("*l")
         --line = patcher.replaceVariables(line)
     else
-        line = patch.readLine(false)
+        line, opt = patch.readLine(false)
     end
     if line == nil then break end
     local status, err = pcall(function()
     
-    local opt
+    local indent = opt.indent
+    
     line, opt = patch.parseLine(line)
     
     local keyword = opt.keyword
     local data = opt.data
     local assignment = opt.assignment
     
-    
---    local keyword, data = unpack(util.split(line," ",1))
---    local assignment = false
-    
---    keyword=keyword:lower()
-    
---    if #util.split(line, "=",1)>1  then
---        local k, d = unpack(util.split(line,"=",1))
---        k = util.trim(k)
---        if #util.split(k, " ",1)==1 then
---            keyword = k
---            data = d
---            assignment = true
---        end
---    end
     
     patcher.lineQueue={}
     if keyword == "repeat" then
@@ -1836,7 +1853,7 @@ while true do
                 print(string.sub(line,1))
             end
         elseif keyword == "print" then
-            print(data)
+            print(data or "")
         elseif keyword == "choose" then
             local choice = util.split(data," ")
             choice = choice[rng:random(1, #choice)]
@@ -1853,13 +1870,20 @@ while true do
             else
                 printf("%s off", keyword)
             end
-        elseif keyword == "test" then
-            print("")
-            local lines = patch.load("patch.txt")
+        elseif keyword == "include" then
+            local f = util.trim(data)
+            local i = patch.index
+            
+            local lines = patch.load(f, {returnOnly=true})
             for k,v in pairs(lines) do
-              printf("line[%02x] [%s]",k,v)
+              table.insert(patch.lines, i, v)
+              --printf("line[%02x] [%s]",k,v)
+              i=i+1
             end
-            print("")
+--            for k,v in pairs(patch.lines) do
+--              printf("line[%02x] [%s]",k,v)
+--            end
+
         elseif keyword == "help" then
             print(patcher.help.interactive)
         elseif keyword == "commands" then
@@ -2041,10 +2065,7 @@ while true do
             local data=string.sub(line,5)
 
             local address = data:sub(1,(data:find(" ")))
-            if util.trim(address) == "*" then
-                address = patcher.variables["ADDRESS"] or "0" 
-            end
-            address = util.toNumber(address)
+            address = util.toAddress(address)
             
             local len = data:sub((data:find(" ")+1))
             len = util.toNumber(len)
@@ -2183,9 +2204,15 @@ while true do
             patcher.write(address+patcher.offset,tileData)
         elseif keyword == "goto" then
             local label = util.trim(data)
-            patch.index = 1
+            local oldPatchIndex = patch.index
+            --patch.index = 1
             while true do
                 line = patch.readLine()
+                if line==nil then
+                    patch.index = 1
+                    line = patch.readLine()
+                end
+                if patch.index==oldPatchIndex then break end
                 if util.startsWith(line, ":"..label) then break end
             end
             patcher.gotoCount = patcher.gotoCount + 1
@@ -2200,6 +2227,16 @@ while true do
                 if util.startsWith(line, "end skip") then break end
             end
             print(string.format("skipped %d lines.", nSkipped-1))
+        elseif util.startsWith(line, "/**") then
+            local nSkipped = 0
+            while true do
+                nSkipped = nSkipped +1
+                line = patch.readLine()
+                if util.endsWith(line, "**/") then
+                    break
+                end
+            end
+            --print(string.format("skipped %d lines.", nSkipped-1))
         elseif util.startsWith(line, "/*") then
             local nSkipped = 0
             while true do
@@ -2235,11 +2272,18 @@ while true do
             k,v = util.trim(k), util.trim(v)
             patcher.variables[k] = v
             printf('Variable: %s = "%s"', k, v)
+        elseif keyword == "num" then
+            local k,v = table.unpack(util.split(data, "=", 1))
+            k,v = util.trim(k), util.trim(v)
+            patcher.variables[k] = util.toNumber(v, patcher.base)
+            
+            printf('Variable: %s = %s', k, v)
         elseif keyword == "if" then
+            --printf("[%s] indent=%s",keyword, indent)
+        
             local k,v = table.unpack(util.split(data, "=="))
             local testTrue = false
-            
-            if (not v) and k then
+            if ((not v) and k) and util.isTrue(patcher.variables[k]) then
                 testTrue = true
                 k = util.trim(k)
                 printVerbose('Test variable: "%s"', k)
@@ -2248,40 +2292,41 @@ while true do
                 printVerbose('Compare variable: "%s" == "%s"', k, v)
             end
             
-            if testTrue==true or (patcher.variables[k] == v) then
-                patcher["if"] = true
+            if testTrue==true or (patcher.variables[k] == v) or (util.isEqual(patcher.variables[k],v)) then
+                patcher["if"..indent] = true
                 printVerbose(" true")
             else
-                patcher["if"] = false
+                patcher["if"..indent] = false
                 printVerbose(" true")
                 
                 local nSkipped = 0
                 while true do
                     nSkipped = nSkipped +1
-                    line = patch.readLine()
+                    line, opt = patch.readLine()
                     if not line then
                         err('Expected "else" or "end if".  Got end of patch instead.')
                     end
-                    if util.startsWith(line, "if ") then
+                    if util.startsWith(line, "if ") and opt.indent == indent then
                         err('Expected "else" or "end if".  Got "if" instead.')
                     end
-                    if util.startsWith(line, "end if") then break end
-                    if util.startsWith(line, "else") then break end
+                    if util.startsWith(line, "end if") and opt.indent==indent then break end
+                    if util.startsWith(line, "else") and opt.indent==indent then break end
                 end
                 --print(string.format("skipped %d lines.", nSkipped-1))
             end
         elseif keyword == "else" then
             -- If the last "if" block was true, then we treat the "else" section like a skip
-            if patcher["if"] == true then
+            if patcher["if"..indent] == true then
                 local nSkipped = 0
                 while true do
                     nSkipped = nSkipped +1
-                    line = patch.readLine()
-                    if util.startsWith(line, "end if") then break end
+                    line, opt = patch.readLine()
+                    if util.startsWith(line, "end if") and indent==opt.indent then break end
                 end
                 --print(string.format("skipped %d lines.", nSkipped-1))
             end
         elseif util.startsWith(line, "end if") then
+            --print("end if use case???????")
         elseif util.startsWith(line, "start tilemap ") then
             local n = string.sub(line,15)
             local tm={}
@@ -2339,7 +2384,8 @@ while true do
             --printf("tilemap size: %s %s",tm.width,tm.height)
         elseif keyword == "eval" then
             local f=util.sandbox:loadCode("return "..data)
-            print(f())
+            patcher.variables["RESULT"] = f()
+            print(patcher.variables["RESULT"])
         elseif keyword == "code" then
             local f=util.sandbox:loadCode(data)
             f()
@@ -2356,12 +2402,8 @@ while true do
             --f()
         elseif keyword == "text" then
             local address = data:sub(1,(data:find(" ")))
-
-            if util.trim(address) == "*" then
-                address = patcher.variables["ADDRESS"] or "0" 
-            end
+            address = util.toAddress(address)
             
-            address = tonumber(address, 16)
             txt=data:sub((data:find(" ")+1))
             print(string.format("Setting ascii text: 0x%08x: %s",address,txt))
             txt=string.gsub(txt, "|", string.char(0))
@@ -2388,12 +2430,8 @@ while true do
                 warning('depreciated keyword "hex". use "put" instead')
             end
             local address = data:sub(1,(data:find(" ")))
+            address = util.toAddress(address)
             
-            if util.trim(address) == "*" then
-                address = patcher.variables["ADDRESS"] or "0" 
-            end
-            
-            address = util.toNumber(address)
             local newData=data:sub((data:find(" ")+1))
             newData = util.stripSpaces(newData)
             
@@ -2405,10 +2443,7 @@ while true do
             patcher.variables["ADDRESS"] = string.format("%x",address + #newData/2)
         elseif keyword == "fill" then
             address = util.split(data, " ", 1)[1]
-            if util.trim(address) == "*" then
-                address = patcher.variables["ADDRESS"] or "0" 
-            end
-            address = util.toNumber(address)
+            address = util.toAddress(address)
             
             data = util.split(data, " ", 1)[2]
             fillCount = util.toNumber(util.split(data, " ", 1)[1])

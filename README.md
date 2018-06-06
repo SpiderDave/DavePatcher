@@ -1,5 +1,5 @@
 ```
-DavePatcher v2018.05.28 beta - SpiderDave https://github.com/SpiderDave/DavePatcher
+DavePatcher v2018.06.06 beta - SpiderDave https://github.com/SpiderDave/DavePatcher
 A custom patcher for use with NES romhacking or general use.
 
 
@@ -26,8 +26,8 @@ You can do a block level comment by enclosing lines in /* */ like this:
     put 1200 a963 // set lives to 99
     */
     
-You can't nest comments with /* */ but you can use the skip keyword to
-accomplish this.
+You can't nest comments with /* */ but you can use the /** and **/ instead
+to accomplish this.  Nested comments are messy, and should be avoided.
     
 Lines starting with # are "annotations"; Annotations are comments that are
 shown in the output when running the patcher when annotations are on  See
@@ -180,6 +180,8 @@ Possible keywords:
         Example:
             goto foobar
             :foobar
+        If there are multiple labels, it will go to the next one, and
+        start at the beginning if not found.
         
     start <address>
         Set the starting address for commands
@@ -300,7 +302,8 @@ Possible keywords:
             code print("Hello World!")
         
     eval
-        Evaluate Lua expression and print the result
+        Evaluate Lua expression and print the result.  The result will also be
+        stored in the variable "RESULT".
         Examples:
             eval "Hello World!"
             eval 5+5*2^10
@@ -325,20 +328,24 @@ Possible keywords:
         value.  You may also do variable assignment without using "var" if
         not in strict mode, but if the variable name contains a space, you
         must use the var keyword.
+    num <var name> = <number>
+        variable assignment to a number type
     
     list variables
         Show a list of all variables.  In addition to variables defined using
         the "var" keyword, there are "special variables" that are set
         automatically, so this is handy for finding them.
     
-    if <var>==<string>
+    if <var>[==<variable>]
     ...
     else
     ...
     end if
-        A basic if, else, end if block.  "else" is optional, and it's very 
-        limited.  Can not be nested currently, only comparison with string
-        is supported.
+        A basic if, else, end if block.  "else" is optional.  if..then blocks
+        are whitespace-aware and can be nested.  For comparison purposes, 
+        numeric strings are equal to numbers, and for truth testing, 0
+        or the empty string "" is considered false (though "" is not equal
+        to 0).
     
     choose <string>
         randomly selects an item in <string> separated by spaces and puts the
