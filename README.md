@@ -1,5 +1,5 @@
 ```
-DavePatcher v2018.06.06 beta - SpiderDave https://github.com/SpiderDave/DavePatcher
+DavePatcher v2018.06.07 beta - SpiderDave https://github.com/SpiderDave/DavePatcher
 A custom patcher for use with NES romhacking or general use.
 
 
@@ -127,6 +127,15 @@ Possible keywords:
         Example:
             text a010 FOOBAR
             
+    bitop [<op>]
+        Set the bitwise operation for commands to <op>.  Valid operations are
+        or, and and xor.  If no operation supplied, then return commands to 
+        normal.  This sets the variable BITOPER.
+        
+    address <address>
+        Set the current address without using another command.  This is the 
+        same as modifying the variable ADDRESS directly.
+        
     find text <text>
         Find text data.  Use the textmap command to set a custom format for
         the text.  If no textmap is set, ASCII is assumed.
@@ -344,8 +353,8 @@ Possible keywords:
         A basic if, else, end if block.  "else" is optional.  if..then blocks
         are whitespace-aware and can be nested.  For comparison purposes, 
         numeric strings are equal to numbers, and for truth testing, 0
-        or the empty string "" is considered false (though "" is not equal
-        to 0).
+        or the empty string "" or "false" are considered false (though "" 
+        is not equal to 0).
     
     choose <string>
         randomly selects an item in <string> separated by spaces and puts the

@@ -317,6 +317,7 @@ end
 util.isTrue = function(n)
     if tonumber(n) == 0 then return nil end
     if n == "" then return nil end
+    if n:lower() == "false" then return false end
     if n then return true end
     return nil
 end
@@ -833,6 +834,15 @@ Possible keywords:
         Example:
             text a010 FOOBAR
             
+    bitop [<op>]
+        Set the bitwise operation for commands to <op>.  Valid operations are
+        or, and and xor.  If no operation supplied, then return commands to 
+        normal.  This sets the variable BITOPER.
+        
+    address <address>
+        Set the current address without using another command.  This is the 
+        same as modifying the variable ADDRESS directly.
+        
     find text <text>
         Find text data.  Use the textmap command to set a custom format for
         the text.  If no textmap is set, ASCII is assumed.
@@ -1050,8 +1060,8 @@ Possible keywords:
         A basic if, else, end if block.  "else" is optional.  if..then blocks
         are whitespace-aware and can be nested.  For comparison purposes, 
         numeric strings are equal to numbers, and for truth testing, 0
-        or the empty string "" is considered false (though "" is not equal
-        to 0).
+        or the empty string "" or "false" are considered false (though "" 
+        is not equal to 0).
     
     choose <string>
         randomly selects an item in <string> separated by spaces and puts the
@@ -1361,8 +1371,89 @@ function util.fileExists(name)
    if f~=nil then io.close(f) return true else return false end
 end
 
+-- this stuff taken from bitty:
+local tconcat = table.concat
+local floor, ceil, max, log =
+        math.floor, math.ceil, math.max, math.log
+local tonumber, assert, type = tonumber, assert, type
+
+local function tobittable_r(x, ...)
+    if (x or 0) == 0 then return ... end
+    return tobittable_r(floor(x/2), x%2, ...)
+end
+
+local function tobittable(x)
+    assert(type(x) == "number", "argument must be a number")
+    if x == 0 then return { 0 } end
+    return { tobittable_r(x) }
+end
+
+local function makeop(cond)
+    local function oper(x, y, ...)
+        if not y then return x end
+        x, y = tobittable(x), tobittable(y)
+        local xl, yl = #x, #y
+        local t, tl = { }, max(xl, yl)
+        for i = 0, tl-1 do
+            local b1, b2 = x[xl-i], y[yl-i]
+            if not (b1 or b2) then break end
+            t[tl-i] = (cond((b1 or 0) ~= 0, (b2 or 0) ~= 0)
+                    and 1 or 0)
+        end
+        return oper(tonumber(tconcat(t), 2), ...)
+    end
+    return oper
+end
+local band = makeop(function(a, b) return a and b end)
+local bor = makeop(function(a, b) return a or b end)
+local bxor = makeop(function(a, b) return a ~= b end)
+local function bnot(x, bits) return bxor(x, (2^(bits or floor(log(x, 2))))-1) end
+local function blshift(x, bits) return floor(x) * (2^bits) end
+local function brshift(x, bits) return floor(floor(x) / (2^bits)) end
+local function tobin(x, bits)
+    local r = tconcat(tobittable(x))
+    return ("0"):rep((bits or 1)+1-#r)..r
+end
+local function frombin(x)
+    return tonumber(x:match("^0*(.*)"), 2)
+end
+local function bisset(x, bit, ...)
+    if not bit then return end
+    return brshift(x, bit)%2 == 1, bisset(x, ...)
+end
+local function bset(x, bit)
+    return bor(x, 2^bit)
+end
+local function bunset(x, bit)
+    return band(x, bnot(2^bit, ceil(log(x, 2))))
+end
+local function repr(x)
+    return (type(x)=="string" and ("%q"):format(x) or tostring(x))
+end
+-------------
+
+
 -- Write data to patcher.newFileData
 function patcher.write(address, data)
+    
+    
+    local old=patcher.fileData:sub(address+1,address+#data)
+    old=bin2hex(old)
+    local new = bin2hex(data)
+    patcher.variables["OLDDATA"] = old
+    patcher.variables["NEWDATA"] = new
+
+    if bit[patcher.variables["BITOPER"]] then
+        local new2=""
+        for i=0,#old/2-1 do
+            local n = tonumber(old:sub(i*2+1,i*2+2),16)
+            local n2 = tonumber(new:sub(i*2+1,i*2+2),16)
+            new2=new2..string.format("%02x", bit.oper(n,n2,bit[patcher.variables["BITOPER"]]))
+        end
+        patcher.variables["NEWDATA"] = new2
+        data = hex2bin(new2)
+    end
+    
     patcher.newFileData = patcher.newFileData:sub(1,address) .. data .. patcher.newFileData:sub(address+#data+1)
     if patcher.autoRefresh == true then
         patcher.fileData = patcher.newFileData
@@ -2103,6 +2194,17 @@ while true do
             --old=bin2hex(old)
             
             print(string.format("Hex data at 0x%08x: %s",address,mapText(old,true)))
+        elseif keyword == "bitop" then
+            if data then data = data:upper() end
+            if bit[data] then
+                patcher.variables["BITOPER"] = data
+            else
+                patcher.variables["BITOPER"] = nil
+            end
+        elseif keyword == "address" then
+            if data then
+                patcher.variables["ADDRESS"] = data
+            end
         elseif keyword == "find" then
             if util.split(util.ltrim(data), " ",1)[1]=="hex" then
                 data = util.split(util.ltrim(data), " ",1)[2]
@@ -2437,8 +2539,9 @@ while true do
             
             old=patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+#newData/2)
             old=bin2hex(old)
-            printf("Setting bytes: 0x%08x: %s --> %s",address,old, newData)
+            --printf("Setting bytes: 0x%08x: %s --> %s",address,old, newData)
             patcher.write(address+patcher.offset,hex2bin(newData))
+            printf("Setting bytes: 0x%08x: %s --> %s",address, patcher.variables["OLDDATA"], patcher.variables["NEWDATA"])
             
             patcher.variables["ADDRESS"] = string.format("%x",address + #newData/2)
         elseif keyword == "fill" then
@@ -2451,8 +2554,9 @@ while true do
             printf("fill: 0x%x 0x%02x [%s]",address, fillCount, fillString)
             
             local newData = string.rep(fillString, fillCount)
-            printVerbose("Fill data: 0x%08x: %s",address, newData)
+            --printVerbose("Fill data: 0x%08x: %s",address, newData)
             patcher.write(address+patcher.offset,hex2bin(newData))
+            printVerbose("Fill data: 0x%08x: %s",address, patcher.variables["NEWDATA"])
             patcher.variables["ADDRESS"] = string.format("%x",address + #newData/2)
         elseif keyword == "gg" then
             local gg=data:upper()
