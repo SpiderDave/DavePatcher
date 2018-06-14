@@ -1,5 +1,5 @@
 ```
-DavePatcher v2018.06.07 beta - SpiderDave https://github.com/SpiderDave/DavePatcher
+DavePatcher v2018.06.14 beta - SpiderDave https://github.com/SpiderDave/DavePatcher
 A custom patcher for use with NES romhacking or general use.
 
 
@@ -183,7 +183,18 @@ Possible keywords:
     break
         Use this to end the patch early.  Handy if you want to add some
         testing stuff at the bottom.
+    
+    error [<reason>]
+        End the patch early and display an error message.  Optionally 
+        provide a reason.
         
+    pause
+        Pauses script and waits for user input
+    
+    getinput <text>
+        Prompt for user input displaying <text> and store the result in 
+        the variable "INPUT".
+    
     goto <label>
         Go to the label <label>.
         Example:
@@ -284,7 +295,7 @@ Possible keywords:
         Example:
             export map batman batman_sprite_test.png
         
-    import map
+    import map <tilemap> <file>
         import tile data from png file using a tile map
         Example:
             import map batman batman_sprite_test.png
@@ -364,9 +375,8 @@ Possible keywords:
             print %CHOICE%
             
     include <file>
-        include another patch file as if it were inserted at this line. There
-        are some limitations with this, as it's parsed differently than the
-        rest of the script so it can be loaded at the start.
+        Dynamically include another patch file as if it were inserted at this
+        line.
     
     strict [on | off]
         Turn strict mode on or off.  In strict mode:

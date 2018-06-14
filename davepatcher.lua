@@ -227,6 +227,10 @@ end
 local util={}
 
 
+function util.isWindows()
+    return (package.config:sub(1,1)=="\\")
+end
+
 function util.keys(t)
     local keys={}
     local ikeys={}
@@ -317,7 +321,7 @@ end
 util.isTrue = function(n)
     if tonumber(n) == 0 then return nil end
     if n == "" then return nil end
-    if n:lower() == "false" then return false end
+    if type(n) == "string" and n:lower() == "false" then return false end
     if n then return true end
     return nil
 end
@@ -890,7 +894,18 @@ Possible keywords:
     break
         Use this to end the patch early.  Handy if you want to add some
         testing stuff at the bottom.
+    
+    error [<reason>]
+        End the patch early and display an error message.  Optionally 
+        provide a reason.
         
+    pause
+        Pauses script and waits for user input
+    
+    getinput <text>
+        Prompt for user input displaying <text> and store the result in 
+        the variable "INPUT".
+    
     goto <label>
         Go to the label <label>.
         Example:
@@ -991,7 +1006,7 @@ Possible keywords:
         Example:
             export map batman batman_sprite_test.png
         
-    import map
+    import map <tilemap> <file>
         import tile data from png file using a tile map
         Example:
             import map batman batman_sprite_test.png
@@ -1071,9 +1086,8 @@ Possible keywords:
             print %CHOICE%
             
     include <file>
-        include another patch file as if it were inserted at this line. There
-        are some limitations with this, as it's parsed differently than the
-        rest of the script so it can be loaded at the start.
+        Dynamically include another patch file as if it were inserted at this
+        line.
     
     strict [on | off]
         Turn strict mode on or off.  In strict mode:
@@ -1262,7 +1276,8 @@ function patch.load(file, opt)
 --            line = string.gsub(line, "%%"..k.."%%", v)
 --        end
         
-        if util.trim(line or "") == "" then
+        if false then
+        --if util.trim(line or "") == "" then
             --ignore empty lines
         elseif util.split(line," ",1)[1] == "_include" then
             patch.includeCount = patch.includeCount + 1
@@ -2650,11 +2665,34 @@ while true do
             data = patcher.fileData:sub(address+1+patcher.offset,address+1+patcher.offset+l-1)
             print(string.format("Copying 0x%08x bytes from 0x%08x to 0x%08x",l, address, address2))
             patcher.write(address2+patcher.offset,data)
+        elseif keyword == "pause" then
+            if util.isWindows() then
+                print("Press any key to continue...")
+                os.execute("pause>nul")
+            else
+                -- ugly fallback for non-windows
+                print("Press enter to continue.")
+                io.stdin:read("*l")
+            end
+        elseif keyword == "getinput" then
+            print(data)
+            local inp=io.stdin:read("*l")
+            patcher.variables["INPUT"] = util.trim(inp)
         elseif line=="break" or line == "quit" or line == "exit" then
             print("[break]")
             --break
             patcher.breakLoop=true
             patcher.breakType = keyword
+        elseif keyword=="error" then
+            -- line numbers aren't useful yet due to the way include works
+            --printf("Error!: %s %s\n", patch.index-1, data)
+            if data then
+                printf("Error!: %s\n", data)
+            else
+                printf("Error!\n")
+            end
+            patcher.breakLoop=true
+            patcher.breakType = "break"
         elseif keyword=="refresh" then
             if data == "auto" then
                 patcher.autoRefresh = true
