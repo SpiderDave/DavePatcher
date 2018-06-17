@@ -1,5 +1,5 @@
 @echo off
-
+del davepatcher.exe
 set foldername=
 set tempfile=_temp.lua
 set stage= beta
@@ -13,8 +13,10 @@ copy version.lua+davepatcher.lua /a %tempfile% /b
 
 rem glue the file with srlua
 echo building davepatcher.exe...
+
 glue srlua.exe %tempfile% davepatcher.exe
 rem glue srlua.exe mm1levelmaker.lua mm1levelmaker.exe
+
 davepatcher -readme
 
 del %tempfile%

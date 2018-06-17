@@ -1,5 +1,5 @@
 ```
-DavePatcher v2018.06.14 beta - SpiderDave https://github.com/SpiderDave/DavePatcher
+DavePatcher v2018.06.17 beta - SpiderDave https://github.com/SpiderDave/DavePatcher
 A custom patcher for use with NES romhacking or general use.
 
 
@@ -377,6 +377,9 @@ Possible keywords:
     include <file>
         Dynamically include another patch file as if it were inserted at this
         line.
+    
+    use [gd | cairo]
+        Initialize graphics to use gd or cairo libraries.
     
     strict [on | off]
         Turn strict mode on or off.  In strict mode:

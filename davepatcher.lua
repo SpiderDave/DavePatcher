@@ -32,6 +32,9 @@
 --   * multiple (named) textmaps
 --   * add output levels (verbose, silent, etc)
 --   * migrate some useful variables to the patcher's "special variables"
+--   * test on other OS
+--   * more cairo integration
+--   * better control over graphics library to use
 
 -- Notes:
 --   * Keywords starting with _ are experimental or unfinished
@@ -39,14 +42,156 @@
 local executionTime = os.clock()
 
 table.unpack = table.unpack or unpack
+
+
 local gd
+local cairo
+local CAIRO
 
 -- let gd fail gracefully.
-if not pcall(function()
-    gd = require("gd")
-end) then
-    gd = false
+--if not pcall(function()
+--    gd = require("gd")
+--end) then
+--    gd = false
+--end
+
+--if not pcall(function()
+--    cairo = require("lcairo")
+--    use_cairo = true
+--end) then
+--    cairo = false
+--end
+--local CAIRO = cairo
+
+
+local graphics = {
+    default = "gd",
+}
+
+function graphics:init(m)
+    m=m or self.mode or self.default
+    self.mode = m
+    if m=="gd" then
+        if self.use_gd then
+            self.use_cairo = false
+            return
+        else
+            if gd then self.use_gd = true return end
+            if not pcall(function()
+                gd = require("gd")
+                self.use_gd = true
+                self.use_cairo = false
+            end) then
+                gd = false
+            end
+        end
+    elseif m=="cairo" then
+        if self.use_cairo then
+            self.use_gd = false
+            return
+        else
+            if cairo then self.use_cairo = true return end
+            if not pcall(function()
+                cairo = require("lcairo")
+                CAIRO = cairo
+                self.use_cairo = true
+                self.use_gd = false
+            end) then
+                cairo = false
+                CAIRO = cairo
+            end
+        end
+    end
+    if cairo or gd then
+        return true
+    else
+        err("could not load gd or cairo")
+    end
 end
+
+function graphics:getPixel(image, x,y)
+    self:init()
+    if self.use_cairo then
+        local data = cairo.image_surface_get_data(image.cs)
+        local f = cairo.image_surface_get_format(image.cs)
+        local w = cairo.image_surface_get_width(image.cs)
+        local h = cairo.image_surface_get_height(image.cs)
+        local stride = cairo.image_surface_get_stride(image.cs)
+        --local c = bin2hex(data:sub(y*stride+x*4+1,y*stride+x*4+4))
+        local b = data:sub(y*stride+x*4+1,y*stride+x*4+1):byte()
+        local g = data:sub(y*stride+x*4+2,y*stride+x*4+2):byte()
+        local r = data:sub(y*stride+x*4+3,y*stride+x*4+3):byte()
+        local a = data:sub(y*stride+x*4+4,y*stride+x*4+4):byte()
+        return r,g,b,a
+    elseif self.use_gd then
+        local c = image:getPixel(x,y)
+        local r,g,b=image:red(c),image:green(c),image:blue(c)
+        return r,g,b,0xff
+    end
+end
+
+function graphics:setPixel(image, x,y,r,g,b)
+    self:init()
+    if self.use_cairo then
+        cr=image.cr
+        cairo.set_source_rgb(cr, r/256,g/256,b/256)
+        cairo.rectangle(cr, x, y, 1, 1)
+        cairo.stroke(cr)
+    elseif self.use_gd then
+        local c = image:colorResolve(r,g,b)
+        image:setPixel(x,y, c)
+    end
+end
+
+function graphics:createImage(w,h)
+    self:init()
+    local image
+    if self.use_cairo then
+        cs = cairo.image_surface_create(CAIRO.FORMAT_RGB24, w, h)
+        cr = cairo.create(cs)
+        image = {cs=cs,cr=cr}
+    elseif self.use_gd then
+        image=gd.createTrueColor(w,h)
+    end
+    return image
+end
+
+function graphics:loadPng(fileName, w,h)
+    self:init()
+    local image
+    if self.use_cairo then
+        cs = cairo.image_surface_create_from_png(fileName)
+        cr = cairo.create(cs)
+        image = {cs=cs,cr=cr}
+    elseif self.use_gd then
+        image = gd.createFromPng(fileName)
+    end
+    return image
+end
+
+function graphics:savePng(image, fileName)
+    self:init()
+    if self.use_cairo then
+        cairo.surface_write_to_png(image.cs, fileName)
+    elseif self.use_gd then
+        image:png(fileName)
+    end
+end
+
+function graphics:copy(source, dest, sourceX,sourceY, w, h, destX, destY)
+    self:init()
+    if self.use_cairo then
+        cairo.set_source_surface(dest.cr, source.cs, destX,destY)
+        cairo.rectangle(source.cr, sourceX,sourceY,w,h)
+        cairo.paint(dest.cr)
+        --return dest
+    elseif self.use_gd then
+        gd.copy(dest, source, destX,destY,sourceX,sourceY, w, h)
+        --return newImage
+    end
+end
+
+
 
 require "os"
 math.randomseed(os.time ()) math.random() math.random() math.random()
@@ -1089,6 +1234,9 @@ Possible keywords:
         Dynamically include another patch file as if it were inserted at this
         line.
     
+    use [gd | cairo]
+        Initialize graphics to use gd or cairo libraries.
+    
     strict [on | off]
         Turn strict mode on or off.  In strict mode:
         * "var" keyword is required for variable assignment.
@@ -1588,13 +1736,15 @@ function imageToTile(len, fileName)
     
     local nTiles = len/16
     
-    local image = gd.createFromPng(fileName)
+    --local image = gd.createFromPng(fileName)
+    local image = graphics:loadPng(fileName)
     local h = math.max(8,math.floor(nTiles/16)*8)
     local w = math.min(16, nTiles)*8
     local colors={}
     for i=0,3 do
         --print(string.format("%02x %02x %02x",table.unpack(nesPalette[colors[i]])))
-        colors[i]=image:colorAllocate(table.unpack(patcher.palette[patcher.colors[i]]))
+        --colors[i]=image:colorAllocate(table.unpack(patcher.palette[patcher.colors[i]]))
+        colors[i]=patcher.palette[patcher.colors[i]]
     end
     local xo=0
     local yo=0
@@ -1608,11 +1758,12 @@ function imageToTile(len, fileName)
             --local byte = string.byte(tileData:sub(t*16+y+1,t*16+y+1))
             --local byte2 = string.byte(tileData:sub(t*16+y+9,t*16+y+9))
             for x=0, 7 do
-                local c=0
+                --local c=0
                 --if bit.isSet(byte,7-x)==true then c=c+1 end
                 --if bit.isSet(byte2,7-x)==true then c=c+2 end
-                local c = image:getPixel(x+xo,y+yo)
-                local r,g,b=image:red(c),image:green(c),image:blue(c)
+                --local c = image:getPixel(x+xo,y+yo)
+                --local r,g,b=image:red(c),image:green(c),image:blue(c)
+                local r,g,b = graphics:getPixel(image, x+xo, y+yo)
                 
                 for i=0,3 do
                     local pr,pg,pb = table.unpack(patcher.palette[patcher.colors[i]])
@@ -1655,7 +1806,8 @@ function imageToTile3(tileMap, fileName)
     --local nTiles = len/16
     nTiles=32*32
     
-    local image = gd.createFromPng(fileName)
+    --local image = gd.createFromPng(fileName)
+    local image = graphics:loadPng(fileName)
     local h = math.max(8,math.floor(nTiles/16)*8)
     local w = math.min(16, nTiles)*8
     h=256
@@ -1663,7 +1815,8 @@ function imageToTile3(tileMap, fileName)
 
     local colors={}
     for i=0,3 do
-        colors[i]=image:colorAllocate(table.unpack(patcher.palette[patcher.colors[i]]))
+        colors[i]=patcher.palette[patcher.colors[i]]
+        --colors[i]=image:colorAllocate(table.unpack(patcher.palette[patcher.colors[i]]))
     end
     local xo=0
     local yo=0
@@ -1676,8 +1829,9 @@ function imageToTile3(tileMap, fileName)
             out[y] = 0
             out[y+8] = 0
             for x=0, 7 do
-                local c = image:getPixel(x+xo,y+yo) or 0
-                local r,g,b=image:red(c),image:green(c),image:blue(c)
+                local r,g,b = graphics:getPixel(image, x+xo, y+yo)
+--                local c = image:getPixel(x+xo,y+yo) or 0
+--                local r,g,b=image:red(c),image:green(c),image:blue(c)
                 
                 --c = image:colorClosestHWB(r,g,b)
                 --r,g,b=image:red(c),image:green(c),image:blue(c)
@@ -1756,11 +1910,11 @@ function tileToImage(tileData, fileName)
     
     local h = math.max(8,math.floor(nTiles/16)*8)
     local w = math.min(16, nTiles)*8
-    local image=gd.createTrueColor(w,h)
+    local image = graphics:createImage(w,h)
     local colors={}
     for i=0,3 do
         --print(string.format("%02x %02x %02x",table.unpack(nesPalette[colors[i]])))
-        colors[i]=image:colorAllocate(table.unpack(patcher.palette[patcher.colors[i]]))
+        colors[i] = patcher.palette[patcher.colors[i]]
     end
     local xo=0
     local yo=0
@@ -1772,7 +1926,7 @@ function tileToImage(tileData, fileName)
                 local c=0
                 if bit.isSet(byte,7-x)==true then c=c+1 end
                 if bit.isSet(byte2,7-x)==true then c=c+2 end
-                image:setPixel(x+xo,y+yo,colors[c])
+                graphics:setPixel(image, x+xo,y+yo,table.unpack(colors[c]))
             end
         end
         xo=xo+8
@@ -1781,7 +1935,7 @@ function tileToImage(tileData, fileName)
             yo=yo+8
         end
     end
-    image:png(fileName)
+    graphics:savePng(image, fileName)
 end
 
 function tileToImage2(tileMap, fileName)
@@ -1793,7 +1947,8 @@ function tileToImage2(tileMap, fileName)
     local w = tm.width
     local h = tm.height
     
-    local image = gd.createFromPng(fileName) or gd.createTrueColor(w,h) or err("could not create image.")
+    --local image = gd.createFromPng(fileName) or gd.createTrueColor(w,h) or err("could not create image.")
+    local image = graphics:loadPng(fileName) or graphics:createImage(w,h) or err("could not create image.")
     local width, height = image:sizeXY()
     
     if (w > width) or (h > height) then
@@ -1801,16 +1956,19 @@ function tileToImage2(tileMap, fileName)
         local newWidth, newHeight = width, height
         if w > newWidth then newWidth = w end
         if h > newHeight then newHeight = h end
-        local newImage = gd.createTrueColor(newWidth,newHeight)
-        --gd.copy(dstImage, srcImage, dstX, dstY, srcX, srcY, w, h) 
-        gd.copy(newImage, image, 0,0,0,0, width, height)
+        --local newImage = gd.createTrueColor(newWidth,newHeight)
+        local newImage = graphics:createImage(newWidth,newHeight)
+        --gd.copy(newImage, image, 0,0,0,0, width, height)
+        --function graphics:copy(source, dest, sourceX,sourceY, w, h, destX, destY)
+        graphics:copy(newImage, image, 0,0,width,height,0,0)
         image = newImage
     end
     
     --local image=gd.createTrueColor(w,h)
     local colors={}
     for i=0,3 do
-        colors[i]=image:colorAllocate(table.unpack(patcher.palette[patcher.colors[i]]))
+        --colors[i]=image:colorAllocate(table.unpack(patcher.palette[patcher.colors[i]]))
+        colors[i]=patcher.palette[patcher.colors[i]]
     end
     local xo=0
     local yo=0
@@ -1832,15 +1990,18 @@ function tileToImage2(tileMap, fileName)
                 xo=tm[i].x * tm[i].gridSize + tm[i].adjust.x or 0
                 yo=tm[i].y * tm[i].gridSize + tm[i].adjust.y or 0
                 if tm[i].flip.horizontal then
-                    image:setPixel(7-x+xo,y+yo,colors[c])
+                    --image:setPixel(7-x+xo,y+yo,colors[c])
+                    graphics:setPixel(image, 7-x+xo,y+yo, table.unpack(colors[c]))
                 else
-                    image:setPixel(x+xo,y+yo,colors[c])
+                    --image:setPixel(x+xo,y+yo,colors[c])
+                    graphics:setPixel(image, x+xo,y+yo, table.unpack(colors[c]))
                 end
             end
         end
         --printf("tilemap index=%02x tileNum=%02x pos=(%02x,%02x) %02x %s",i,tm[i].tileNum, tm[i].x,tm[i].y,address,bin2hex(tileData))
     end
-    image:png(fileName)
+    --image:png(fileName)
+    graphics:savePng(fileName)
     return true
 end
 
@@ -2278,7 +2439,9 @@ while true do
             end
         elseif util.startsWith(line, "export ") then
             if not gd then
-                err("could not use export command because gd did not load.")
+                if not cairo then
+                    --err("could not use export command because gd did not load.")
+                end
             end
             local dummy, address,len,fileName=unpack(util.split(line," ",3))
             if not address then err("missing export address") end
@@ -2292,9 +2455,9 @@ while true do
             printVerbose(bin2hex(tileData))
             tileToImage(tileData, fileName)
         elseif util.startsWith(line, "import map ") then
-            if not gd then
-                err("could not use import command because gd did not load.")
-            end
+--            if not gd then
+--                err("could not use import command because gd did not load.")
+--            end
             local dummy, dummy, tileMap, fileName=unpack(util.split(line," ",3))
             --address=tonumber(address,16)
             --len=tonumber(len,16)*16
@@ -2308,9 +2471,9 @@ while true do
                 patcher.write(address+patcher.offset,td)
             end
         elseif util.startsWith(line, "import ") then
-            if not gd then
-                err("could not use import command because gd did not load.")
-            end
+--            if not gd then
+--                err("could not use import command because gd did not load.")
+--            end
             local dummy, address,len,fileName=unpack(util.split(line," ",3))
             address=tonumber(address,16)
             len=tonumber(len,16)*16
@@ -2678,6 +2841,48 @@ while true do
             print(data)
             local inp=io.stdin:read("*l")
             patcher.variables["INPUT"] = util.trim(inp)
+            
+        elseif keyword == "cairotest" then
+            print('cairo test***')
+            local image = graphics:loadPng("frogtest.png")
+            graphics:savePng(image, "cairotest.png")
+            local data = cairo.image_surface_get_data(image.cs)
+            local f = cairo.image_surface_get_format(image.cs)
+            local w = cairo.image_surface_get_width(image.cs)
+            local h = cairo.image_surface_get_height(image.cs)
+            local stride = cairo.image_surface_get_stride(image.cs)
+            
+            printf("format= %s", f)
+            printf("size = %sx%s", w,h)
+            printf("stride = %s", stride)
+            print(bin2hex(data))
+            
+            local x=3
+            local y=09
+            local c = bin2hex(data:sub(y*stride+x*4+1,y*stride+x*4+4))
+            printf("color = %s", c)
+            local b = data:sub(y*stride+x*4+1,y*stride+x*4+1):byte()
+            local g = data:sub(y*stride+x*4+2,y*stride+x*4+2):byte()
+            local r = data:sub(y*stride+x*4+3,y*stride+x*4+3):byte()
+            print(b,g,r)
+            
+            
+            --local reg = cairo.region_create_rectangle(rectangle)
+            --local rect = cairo.rectangle(image.cr, 0, 0, 8, 32)
+            --local reg = cairo.region_create_rectangle(rect)
+            
+            local image2= graphics:createImage(256,256)
+            cairo.set_source_surface(image2.cr, image.cs, 4,4)
+            cairo.rectangle(image.cr, 0,0,8,8)
+            cairo.paint(image2.cr)
+            graphics:savePng(image2, "copytest.png")
+            
+            --cairo_set_source_surface(cr, other_surface, target_x-source_x, target_y-source_y); cairo_rectangle(cr, target_x, target_y, width, height); cairo_paint(cr);
+            
+--            local surface = cairo.image_surface_create_from_png("frogtest.png")
+            
+--            cairo.surface_write_to_png(surface, "cairotest.png")
+            
         elseif line=="break" or line == "quit" or line == "exit" then
             print("[break]")
             --break
@@ -2867,6 +3072,14 @@ while true do
             end
             printVerbose("%s records (%s RLE)",ips.nRecords, ips.nRLE)
             print("ips done.")
+        elseif keyword == "use" then
+            if data:lower() == "gd" then
+                graphics:init("gd")
+                print("Using gd for graphics operations.")
+            elseif data:lower() == "cairo" then
+                graphics:init("cairo")
+                print("Using cairo for graphics operations.")
+            end
         elseif keyword == "readme" then
             if not (data == "update") then
                 err("bad or missing readme parameter.")
