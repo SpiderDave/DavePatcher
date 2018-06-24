@@ -1,0 +1,86 @@
+textmap 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-?., d0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5cff7
+textmap space fb
+
+// change "PUSH START BUTTON" to "PUSH  START" to match all-stars version
+text 19F7    PUSH  START   
+
+// Change PRINCESS -> PEACH in ending (contributor text)
+// Note: q and v are missing in this set
+textmap 0123456789ABCDEFGHIJKLMNOPRSTUWXY? d0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9ebecedeef0f1f2f7
+textmap space fa
+text 2E22 PEACH   
+
+// Change names in credits
+// We'll make them match the GBA release
+// HOOPSTAR -> HOOPSTER
+// PRINCESS -> PEACH
+// OSTRO -> BIRDO
+// BIRDO -> OSTRO
+// CLAWGLIP -> CLAWGRIP
+// TRICLYDE -> TRYCLYDE
+
+
+//        P       R       I       N       C       E       S       S       -      
+//18be2 f9ee0020f9f20028f9e00030f9ea0038f9d40040f9d80048f9f40050f9f40058d03e0030d0180038d01a0040d03e0048
+
+// PRINCESS --> PEACH
+// (adjust x position by 0x0c to account for 3 less characters of 8 pixels, 4 for each missing character)
+put 18be2 f9ee002cf9d80034f9d0003cf9d40044f9de004cf93e0054f93e005cf93e0064d03e0030
+// HOOPSTAR -> HOOPSTER (just change the E)
+put 18e3b d8
+// BIRDO to OSTRO and vice versa
+// note: copy from old data since we didn't use refresh, so it swaps
+copy 190a6 190e6 14
+copy 190e6 190a6 14
+// CLAWGLIP -> CLAWGRIP (just change the L)
+put 19237 f2
+// TRICLYDE -> TRYCLYDE (just change the I)
+put 1928b cc
+
+// Copy the elipses character to the select screen font (fixes bug where it's gone)
+copy 2ef90 2bf90 10
+
+textmap space fb
+//PUSH (A) BUTTON
+text 145ac PRESS BUTTON  
+
+// 00:8cc1
+// This usually clears controller input when you do a charge jump
+// Change it to point to new subroutine below instead
+// (originally it has a90085f7)
+// 20 db95 jump to subroutine at $95db
+// ea (no operation, since we don't need this byte now)
+put 0cbf 20 db95 ea
+
+//00:95db
+// New subroutine to only clear left/right/down when doing a charge jump
+// a9f8 Load accumulator with #$f8
+// 25f7 AND what's in $00f7 (controller input) with accumulator (#$f8)
+// 85f7 store accumulator back in $00f7
+// a900 load accumulator with #$00 (code below the original spot needs it)
+// 60 return from subroutine
+put 15db a9f8 25f7 85f7 a900 60
+
+// The O in one frame of POW is offset wrong
+palette 2130160f
+import map pow pow_fixed.png
+
+// Restore missing 8th animation frame for tiles
+put 1Faf5 28
+
+// This is where the game sets the music and death sfx, but due to a bug, the sfx doesn't play
+// Change it to jump to a new soubroutine instead
+put 1f749 2036fbeaeaeaeaeaeaea
+//  2036fb ;jsr $fb36
+//  eaeaeaeaeaeaea ;nop x 7 (this is just "no operation" to fill the space)
+// This is the new subroutine; it plays the death music, adds a new vblank wait thing, then plays the sfx
+put 1fb36 a9088d0306ad022010fba9808d010660
+//  a908 ;lda #$08 load the value for the death music
+//  8d0306 ;sta $0603 store it in music queue
+// This next bit is a vblank wait routine to waste a bit of time so we don't play
+// the music and sound effect at the same time (this is what makes it not play normally).
+//   ad0220 lda $2002 read ppustatus
+//   10fb bpl $fb3b if bit 7 is not set (not VBlank) then keep checking it
+//  a980 ; lda #$80 load the value for the death sound effect
+//  8d0106 ;sta $0601 store it in the dpcm queue
+// 60 ;rts return from subroutine

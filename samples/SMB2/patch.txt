@@ -1,0 +1,13 @@
+# patch for "Super Mario Bros. 2 (USA).nes"
+
+include config.txt
+
+load %oldFile%
+
+offset 10
+include tilemaps.txt
+include improvement.txt
+
+:end
+print Build: %build%
+save %newFile%
