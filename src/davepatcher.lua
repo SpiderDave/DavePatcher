@@ -65,7 +65,7 @@ local CAIRO
 
 
 local graphics = {
-    default = "gd",
+    default = "cairo",
 }
 
 function graphics:init(m)
@@ -183,11 +183,9 @@ function graphics:copy(source, dest, sourceX,sourceY, w, h, destX, destY)
     if self.use_cairo then
         cairo.set_source_surface(dest.cr, source.cs, destX,destY)
         cairo.rectangle(source.cr, sourceX,sourceY,w,h)
-        cairo.paint(dest.cr)
-        --return dest
+        cairo.fill(dest.cr)
     elseif self.use_gd then
         gd.copy(dest, source, destX,destY,sourceX,sourceY, w, h)
-        --return newImage
     end
 end
 
@@ -493,7 +491,6 @@ function patcher.save(f)
     end
     patcher.saved = true
 end
-
 
 local asm={}
 
@@ -848,7 +845,10 @@ function util.split(s, delim, max)
   return t
 end
 
-patcher.help.extra = "\nSome commands require Lua-GD https://sourceforge.net/projects/lua-gd/\n"
+patcher.help.extra = [[Some commands require Lua Cairo (recommended) http://www.dynaset.org/dogusanh/luacairo.html 
+--or--
+Lua-GD https://sourceforge.net/projects/lua-gd/
+]]
 patcher.help.info = string.format("%s %s - %s %s",patcher.info.name,patcher.info.version,patcher.info.author,patcher.info.url)
 patcher.help.description = "A custom patcher for use with NES romhacking or general use."
 patcher.help.usage = [[
@@ -858,7 +858,7 @@ Usage: davepatcher [options...] <patch file> [<file to patch>]
 Options:
   -h          show help
   -commands   show commands
-  -i          interactive mode
+  -i          interactive mode (broken at the moment!)
 ]]
 patcher.help.interactive = [[Type "help" for this help, "commands" for more information or "break" to quit.]]
 patcher.help.commands = [[
@@ -1044,7 +1044,7 @@ Possible keywords:
         End the patch early and display an error message.  Optionally 
         provide a reason.
         
-    pause
+    pause (broken at the moment!)
         Pauses script and waits for user input
     
     getinput <text>
@@ -1353,6 +1353,9 @@ end
 
 function quit(text,...)
   if text then printf(text,...) end
+  if love then
+      love.event.push('quit')
+  end
   os.exit()
 end
 
@@ -1364,6 +1367,7 @@ function warning(text,...)
     if text then printf("Warning: "..text,...) end
     -- Does not exit unless strict mode
     if patcher.strict ==true then
+        if love then love.event.push('quit') end
         os.exit()
     end
 end
@@ -2005,6 +2009,7 @@ function tileToImage2(tileMap, fileName)
     return true
 end
 
+
 if arg[1]=="-readme" then
     if (util.writeToFile("README.md",0,"```\n"..patcher.help.info .."\n".. patcher.help.description .."\n\n"..patcher.help.extra.."\n\n".. patcher.help.commands.."\n```")) then
         print("README updated")
@@ -2328,6 +2333,17 @@ while true do
             old=bin2hex(old)
             
             print(string.format("Hex data at 0x%08x: %s",address, old))
+        elseif util.startsWith(line:lower(), "get text ") then
+            local data=string.sub(line,10)
+            local address = data:sub(1,(data:find(" ")))
+            address = tonumber(address, 16)
+            local len = data:sub((data:find(" ")+1))
+            len = tonumber(len, 16)
+            
+            local old=patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+len)
+            --old=bin2hex(old)
+            
+            print(string.format("Text data at 0x%08x: %s",address,mapText(old,true)))
         elseif keyword == "get" then
             local data=string.sub(line,5)
 
@@ -2359,17 +2375,6 @@ while true do
                     break
                 end
             end
-        elseif util.startsWith(line:lower(), "get text ") then
-            local data=string.sub(line,10)
-            local address = data:sub(1,(data:find(" ")))
-            address = tonumber(address, 16)
-            local len = data:sub((data:find(" ")+1))
-            len = tonumber(len, 16)
-            
-            local old=patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+len)
-            --old=bin2hex(old)
-            
-            print(string.format("Hex data at 0x%08x: %s",address,mapText(old,true)))
         elseif keyword == "bitop" then
             if data then data = data:upper() end
             if bit[data] then
@@ -2416,6 +2421,26 @@ while true do
             end
         --elseif keyword == "fontdata" then
             --local font = {"33":[0,0,0,0,0,8,8,8,8,8,0,8,0,0,0,0],"34":[0,0,0,0,0,20,20,0,0,0,0,0,0,0,0,0],"35":[0,0,0,0,0,0,40,124,40,40,124,40,0,0,0,0],"36":[0,0,0,0,16,56,84,20,56,80,84,56,16,0,0,0],"37":[0,0,0,0,0,264,148,72,32,144,328,132,0,0,0,0],"38":[0,0,0,0,0,48,72,48,168,68,196,312,0,0,0,0],"39":[0,0,0,0,0,8,8,0,0,0,0,0,0,0,0,0],"40":[0,0,0,0,0,8,4,4,4,4,4,8,0,0,0,0],"41":[0,0,0,0,0,4,8,8,8,8,8,4,0,0,0,0],"42":[0,0,0,0,32,168,112,428,112,168,32,0,0,0,0,0],"43":[0,0,0,0,0,0,16,16,124,16,16,0,0,0,0,0],"44":[0,0,0,0,0,0,0,0,0,0,24,24,16,8,0,0],"45":[0,0,0,0,0,0,0,0,60,0,0,0,0,0,0,0],"46":[0,0,0,0,0,0,0,0,0,0,24,24,0,0,0,0],"47":[0,0,0,0,0,16,16,8,8,8,4,4,0,0,0,0],"48":[0,0,0,0,0,24,36,36,36,36,36,24,0,0,0,0],"49":[0,0,0,0,0,8,8,8,8,8,8,8,0,0,0,0],"50":[0,0,0,0,0,24,36,32,16,8,4,60,0,0,0,0],"51":[0,0,0,0,0,24,36,32,24,32,36,24,0,0,0,0],"52":[0,0,0,0,0,32,36,36,60,32,32,32,0,0,0,0],"53":[0,0,0,0,0,60,4,4,24,32,36,24,0,0,0,0],"54":[0,0,0,0,0,24,36,4,28,36,36,24,0,0,0,0],"55":[0,0,0,0,0,60,32,32,16,8,8,8,0,0,0,0],"56":[0,0,0,0,0,24,36,36,24,36,36,24,0,0,0,0],"57":[0,0,0,0,0,24,36,36,56,32,36,24,0,0,0,0],"58":[0,0,0,0,0,0,24,24,0,0,24,24,0,0,0,0],"59":[0,0,0,0,0,0,24,24,0,0,24,24,16,8,0,0],"60":[0,0,0,0,0,32,16,8,4,8,16,32,0,0,0,0],"61":[0,0,0,0,0,0,0,60,0,0,60,0,0,0,0,0],"62":[0,0,0,0,0,4,8,16,32,16,8,4,0,0,0,0],"63":[0,0,0,0,0,24,36,32,16,8,0,8,0,0,0,0],"64":[0,0,0,0,240,264,612,660,660,484,8,240,0,0,0,0],"65":[0,0,0,0,0,24,36,36,60,36,36,36,0,0,0,0],"66":[0,0,0,0,0,28,36,36,28,36,36,28,0,0,0,0],"67":[0,0,0,0,0,24,36,4,4,4,36,24,0,0,0,0],"68":[0,0,0,0,0,28,36,36,36,36,36,28,0,0,0,0],"69":[0,0,0,0,0,60,4,4,28,4,4,60,0,0,0,0],"70":[0,0,0,0,0,60,4,4,28,4,4,4,0,0,0,0],"71":[0,0,0,0,0,24,36,4,52,36,36,24,0,0,0,0],"72":[0,0,0,0,0,36,36,36,60,36,36,36,0,0,0,0],"73":[0,0,0,0,0,28,8,8,8,8,8,28,0,0,0,0],"74":[0,0,0,0,0,60,16,16,16,20,20,8,0,0,0,0],"75":[0,0,0,0,0,36,36,20,12,20,36,36,0,0,0,0],"76":[0,0,0,0,0,4,4,4,4,4,4,60,0,0,0,0],"77":[0,0,0,0,0,68,68,108,84,84,68,68,0,0,0,0],"78":[0,0,0,0,0,68,76,84,84,84,100,68,0,0,0,0],"79":[0,0,0,0,0,24,36,36,36,36,36,24,0,0,0,0],"80":[0,0,0,0,0,28,36,36,28,4,4,4,0,0,0,0],"81":[0,0,0,0,0,24,36,36,36,52,36,88,0,0,0,0],"82":[0,0,0,0,0,28,36,36,28,36,36,36,0,0,0,0],"83":[0,0,0,0,0,24,36,4,24,32,36,24,0,0,0,0],"84":[0,0,0,0,0,124,16,16,16,16,16,16,0,0,0,0],"85":[0,0,0,0,0,36,36,36,36,36,36,24,0,0,0,0],"86":[0,0,0,0,0,68,68,68,68,40,40,16,0,0,0,0],"87":[0,0,0,0,0,84,84,84,84,84,56,40,0,0,0,0],"88":[0,0,0,0,0,68,68,40,16,40,68,68,0,0,0,0],"89":[0,0,0,0,0,68,68,40,16,16,16,16,0,0,0,0],"90":[0,0,0,0,0,60,32,16,16,8,4,60,0,0,0,0],"91":[0,0,0,0,0,28,4,4,4,4,4,28,0,0,0,0],"92":[0,0,0,0,0,4,4,8,8,8,16,16,0,0,0,0],"93":[0,0,0,0,0,28,16,16,16,16,16,28,0,0,0,0],"94":[0,0,0,0,0,24,36,0,0,0,0,0,0,0,0,0],"95":[0,0,0,0,0,0,0,0,0,0,0,0,508,0,0,0],"96":[0,0,0,0,0,4,8,0,0,0,0,0,0,0,0,0],"97":[0,0,0,0,0,0,0,24,32,56,36,88,0,0,0,0],"98":[0,0,0,0,0,0,4,4,28,36,36,28,0,0,0,0],"99":[0,0,0,0,0,0,0,0,24,4,4,24,0,0,0,0],"100":[0,0,0,0,0,0,32,32,56,36,36,88,0,0,0,0],"101":[0,0,0,0,0,0,0,24,36,28,4,56,0,0,0,0],"102":[0,0,0,0,0,0,48,8,8,28,8,8,0,0,0,0],"103":[0,0,0,0,0,0,0,0,88,36,36,56,32,36,24,0],"104":[0,0,0,0,0,0,4,4,4,28,36,36,0,0,0,0],"105":[0,0,0,0,0,0,8,0,12,8,8,8,0,0,0,0],"106":[0,0,0,0,0,0,0,16,0,24,16,16,16,12,0,0],"107":[0,0,0,0,0,0,0,4,20,12,20,20,0,0,0,0],"108":[0,0,0,0,0,0,4,4,4,4,4,8,0,0,0,0],"109":[0,0,0,0,0,0,0,0,4,88,168,168,0,0,0,0],"110":[0,0,0,0,0,0,0,0,4,28,36,36,0,0,0,0],"111":[0,0,0,0,0,0,0,0,24,36,36,24,0,0,0,0],"112":[0,0,0,0,0,0,0,4,56,72,72,56,8,8,8,0],"113":[0,0,0,0,0,0,0,0,88,36,36,56,32,32,64,0],"114":[0,0,0,0,0,0,0,0,52,72,8,8,0,0,0,0],"115":[0,0,0,0,0,0,0,24,4,24,32,24,0,0,0,0],"116":[0,0,0,0,0,0,8,8,28,8,8,16,0,0,0,0],"117":[0,0,0,0,0,0,0,0,36,36,36,88,0,0,0,0],"118":[0,0,0,0,0,0,0,0,68,68,40,16,0,0,0,0],"119":[0,0,0,0,0,0,0,0,84,84,84,40,0,0,0,0],"120":[0,0,0,0,0,0,0,0,36,24,24,36,0,0,0,0],"121":[0,0,0,0,0,0,0,0,36,36,36,56,32,36,24,0],"122":[0,0,0,0,0,0,0,0,60,16,8,60,0,0,0,0],"123":[0,0,0,16,8,8,8,4,8,8,8,16,0,0,0,0],"124":[0,0,0,8,8,8,8,8,8,8,8,8,0,0,0,0],"125":[0,0,0,4,8,8,8,16,8,8,8,4,0,0,0,0],"126":[0,0,0,0,0,0,0,24,292,192,0,0,0,0,0,0],"161":[0,0,0,0,0,8,0,8,8,8,8,8,0,0,0,0],"162":[0,0,0,0,0,0,16,56,20,20,56,16,0,0,0,0],"163":[0,0,0,0,0,48,8,8,28,8,8,60,0,0,0,0],"164":[0,0,0,0,0,0,132,120,72,72,120,132,0,0,0,0],"165":[0,0,0,0,68,40,16,56,16,56,16,16,0,0,0,0],"166":[0,0,0,8,8,8,8,0,8,8,8,8,0,0,0,0],"167":[0,0,0,0,0,0,48,72,8,48,72,72,48,64,72,48],"168":[0,0,0,0,0,108,108,0,0,0,0,0,0,0,0,0],"169":[0,0,0,0,240,264,612,532,532,612,264,240,0,0,0,0],"8364":[0,0,0,0,0,112,8,60,8,60,8,112,0,0,0,0],"name":"SlightlyFancyPix","copy":"SpiderDave","letterspace":"64","basefont_size":"512","basefont_left":"62","basefont_top":"0","basefont":"Arial","basefont2":""}
+        elseif util.startsWith(line, "export tbl ") then
+            data = util.split(line," ",3)[3]
+            printf("Outputting textmap to %s...", data)
+            local out=""
+            local a={}
+            for k,v in pairs(textMap) do
+                if a[v:byte()] then
+                    -- already defined, ignore duplicates
+                else
+                    a[v:byte()]=k
+                end
+            end
+            for i=0,255 do
+                if a[i] then
+                    out=out..string.format("%02x=%s\n",i,a[i])
+                end
+            end
+            
+            local f = data
+            if not util.writeToFile(f, 0, out) then err("Could not write to file") end
         elseif util.startsWith(line, "export map ") then
             if not gd then
                 err("could not use export command because gd did not load.")
@@ -2531,6 +2556,12 @@ while true do
             while true do
                 line = patch.readLine()
                 if util.startsWith(line, "end print") then break end
+                print(line)
+            end
+        elseif util.startsWith(line, "start tbl") then
+            while true do
+                line = patch.readLine()
+                if util.startsWith(line, "end tbl") then break end
                 print(line)
             end
         elseif keyword == "list" and data == "variables" then
@@ -2694,15 +2725,20 @@ while true do
             
             patcher.variables["ADDRESS"] = string.format("%x",address + #txt)
         elseif keyword == "textmap" then
-            local mapOld = data:sub(1,(data:find(" ")-1))
-            local mapNew = data:sub((data:find(" ")+1))
-            textMap=textMap or {}
-            if mapOld=="space" then
-                textMap[" "]=hex2bin(mapNew)
+            if data == "clear" then
+                textMap = {}
+                printVerbose("clearing textmap")
             else
-                mapNew=hex2bin(mapNew)
-                for i=1,#mapOld do
-                    textMap[mapOld:sub(i,i)]=mapNew:sub(i,i)
+                local mapOld = data:sub(1,(data:find(" ")-1))
+                local mapNew = data:sub((data:find(" ")+1))
+                textMap=textMap or {}
+                if mapOld=="space" then
+                    textMap[" "]=hex2bin(mapNew)
+                else
+                    mapNew=hex2bin(mapNew)
+                    for i=1,#mapOld do
+                        textMap[mapOld:sub(i,i)]=mapNew:sub(i,i)
+                    end
                 end
             end
         elseif keyword == "hex" or keyword == "put" then
@@ -2829,7 +2865,8 @@ while true do
             print(string.format("Copying 0x%08x bytes from 0x%08x to 0x%08x",l, address, address2))
             patcher.write(address2+patcher.offset,data)
         elseif keyword == "pause" then
-            if util.isWindows() then
+            --if util.isWindows() then
+            if 0==1 then
                 print("Press any key to continue...")
                 os.execute("pause>nul")
             else

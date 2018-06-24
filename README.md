@@ -1,9 +1,10 @@
 ```
-DavePatcher v2018.06.17 beta - SpiderDave https://github.com/SpiderDave/DavePatcher
+DavePatcher v2018.06.24 - SpiderDave https://github.com/SpiderDave/DavePatcher
 A custom patcher for use with NES romhacking or general use.
 
-
-Some commands require Lua-GD https://sourceforge.net/projects/lua-gd/
+Some commands require Lua Cairo (recommended) http://www.dynaset.org/dogusanh/luacairo.html 
+--or--
+Lua-GD https://sourceforge.net/projects/lua-gd/
 
 
 Lines starting with // are comments.
@@ -188,7 +189,7 @@ Possible keywords:
         End the patch early and display an error message.  Optionally 
         provide a reason.
         
-    pause
+    pause (broken at the moment!)
         Pauses script and waits for user input
     
     getinput <text>
@@ -388,4 +389,4 @@ Possible keywords:
         * disable auto save (see "save" keyword).
 
 
-```
+`````
