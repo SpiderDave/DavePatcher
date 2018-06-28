@@ -185,6 +185,13 @@ Possible keywords:
         Use this to end the patch early.  Handy if you want to add some
         testing stuff at the bottom.
     
+    start loop
+    ...
+    [break loop]
+    ...
+    end loop
+        A basic loop.  Lines inside will be repeated forever.  Use "break loop" inside to exit the loop.
+    
     error [<reason>]
         End the patch early and display an error message.  Optionally 
         provide a reason.
@@ -202,7 +209,8 @@ Possible keywords:
             goto foobar
             :foobar
         If there are multiple labels, it will go to the next one, and
-        start at the beginning if not found.
+        start at the beginning if not found.  Using goto inside a function
+        or an include can have unpredictable results.
         
     start <address>
         Set the starting address for commands

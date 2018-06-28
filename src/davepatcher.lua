@@ -36,6 +36,9 @@
 --   * more cairo integration
 --   * better control over graphics library to use
 --   * split things off into seperate files, since we aren't using srlua anymore.
+--   * better include paths
+--     + search from a list
+--   * fix goto statements and labels inside functions
 
 -- Notes:
 --   * Keywords starting with _ are experimental or unfinished
@@ -91,6 +94,7 @@ local patcher = {
     breakLoop=false,
 }
 
+patcher.path = love.filesystem.getSourceBaseDirectory()
 
 function patcher.setPalette(p)
     if #p~=8 then return false end
@@ -133,7 +137,9 @@ function patcher.load(f)
     patcher.fileData = getfilecontents(patcher.fileName)
     patcher.originalFileData = patcher.fileData
     patcher.newFileData = patcher.fileData
-    patcher.header = patcher.getHeader()
+    pcall(function()
+        patcher.header = patcher.getHeader()
+    end)
 end
 
 function patcher.makeIPS(oldData, newData)
@@ -213,6 +219,7 @@ end
 
 local util={}
 
+util.deque = require("include.deque")
 
 function util.isWindows()
     return (package.config:sub(1,1)=="\\")
@@ -567,6 +574,13 @@ Possible keywords:
         Use this to end the patch early.  Handy if you want to add some
         testing stuff at the bottom.
     
+    start loop
+    ...
+    [break loop]
+    ...
+    end loop
+        A basic loop.  Lines inside will be repeated forever.  Use "break loop" inside to exit the loop.
+    
     error [<reason>]
         End the patch early and display an error message.  Optionally 
         provide a reason.
@@ -584,7 +598,8 @@ Possible keywords:
             goto foobar
             :foobar
         If there are multiple labels, it will go to the next one, and
-        start at the beginning if not found.
+        start at the beginning if not found.  Using goto inside a function
+        or an include can have unpredictable results.
         
     start <address>
         Set the starting address for commands
@@ -939,6 +954,7 @@ local patch = {
     includeCount = 0,
     includeLimit = 20,
     f={},
+    loopStack = util.deque:new()
 }
 
 function patch.load(file, opt)
@@ -946,10 +962,20 @@ function patch.load(file, opt)
     
     local lines = {}
     local opt = opt or {}
-    file = file or patch.file
+    local patchLines ={}
     
-    if util.fileExists(file)==false then
-        err("The file %s does not exist.",file)
+    if opt.nofile then
+        patchLines = opt.lines
+    else
+        file = file or patch.file
+
+        if util.fileExists(file)==false then
+            err("The file %s does not exist.",file)
+        end
+        
+        for line in io.lines(file) do
+            patchLines[#patchLines + 1] = line
+        end
     end
     
     if opt.extra then
@@ -967,7 +993,7 @@ function patch.load(file, opt)
         end
     end
     
-    for line in io.lines(file) do
+    for _,line in ipairs(patchLines) do
         if string.find(line," //") then
             -- remove comments with a space before them
             line = string.sub(line, 1, string.find(line," //") -1)
@@ -1517,7 +1543,6 @@ function tileToImage2(tileMap, fileName)
     return true
 end
 
-
 if arg[1]=="-readme" then
     if (util.writeToFile("README.md",0,"```\n"..patcher.help.info .."\n".. patcher.help.description .."\n\n"..patcher.help.extra.."\n\n".. patcher.help.commands.."\n```")) then
         print("README updated")
@@ -1558,9 +1583,45 @@ if arg[1] == "-i" then
     print(patcher.help.interactive)
 end
 
+if arg[1] == "-nofile" then
+    patcher.nofile = true
+    print("no file mode")
+    
+    --patch.lines = {
+    local l= {
+        "start function interactive",
+        "    print",
+        "    help",
+        "    start loop",
+        "        getinput > ",
+        "        if %INPUT% == break",
+        "            print",
+        "            break loop",
+        "        else",
+        "            %INPUT%",
+        "        end if",
+        "    end loop",
+        "end function",
+        "interactive()",
+        "break",
+
+    }
+
+
+    patch.index = 1
+    
+    
+    local opt = {
+        nofile=true,
+        lines = l,
+    }
+    patch.load(nil, opt)
+end
+
+
 file_dumptext = nil
 
-if not patcher.interactive==true then
+if (not patcher.interactive==true) and (not patcher.nofile==true) then
     local opt = {
         _extra = {"default.txt"}
     }
@@ -1657,7 +1718,16 @@ while true do
                 printf("%s off", keyword)
             end
         elseif keyword == "include" then
+--            print(love.filesystem.getSourceBaseDirectory( ))
+            local path = love.filesystem.getWorkingDirectory( )
+            print("include path: ",path)
             local f = util.trim(data)
+            if util.startsWith(f, "/") then
+                f = patcher.path..f
+            else
+                --f = path.."/"..f
+            end
+
             local i = patch.index
             
             local lines = patch.load(f, {returnOnly=true})
@@ -2063,6 +2133,22 @@ while true do
                 end
             end
             --print(string.format("skipped %d lines.", nSkipped-1))
+        elseif util.startsWith(line, "start loop") then
+            --printf("start loop %s",patch.index)
+            patch.loopStack:push(patch.index)
+        elseif util.startsWith(line, "end loop") then
+            --local i=patch.loopStack:pop()
+            local i=patch.loopStack:last()
+            --printf("end loop %s %s %s",i,patch.index,patch.lines[i])
+            patch.index = i
+            --line = patch.readLine()
+        elseif util.startsWith(line, "break loop") then
+            local i=patch.loopStack:pop()
+
+            while true do
+                line = patch.readLine()
+                if util.startsWith(line, "end loop") then break end
+            end
         elseif util.startsWith(line, "start print") then
             while true do
                 line = patch.readLine()
@@ -2075,16 +2161,25 @@ while true do
                 if util.startsWith(line, "end tbl") then break end
                 print(line)
             end
-        elseif util.startsWith(line, "start function ") then
+        elseif util.startsWith(line, "start function") then
+            local n = util.trim(util.split(data, " ", 1)[2])
+            if (not n) or n=="" then
+                err("Missing function name.")
+            elseif n:find(" ") then
+                err('Invalid function name "%s"',n)
+            end
+            
             local n = util.split(data, " ", 1)[2]
             patch.f[n]={}
             while true do
-                line = patch.readLine(false)
+                local line, opt = patch.readLine(false)
                 if util.startsWith(line, "end function") then break end
                 --print(line)
-                patch.f[n][#patch.f[n]+1]=line
+                
+                patch.f[n][#patch.f[n]+1]=string.rep(" ",opt.indent)..line
+                --print("******"..string.rep(" ",opt.indent)..line)
             end
-            printf("Creating function %s",n)
+            printVerbose("Creating function %s",n)
         elseif keyword=="run" or util.endsWith(keyword, "()") then
             local fName = data
             if util.endsWith(keyword, "()") then
@@ -2097,8 +2192,9 @@ while true do
             
             local i = patch.index
             local lines = patch.f[fName]
+            
             for k,v in pairs(lines) do
-              table.insert(patch.lines, i, v)
+              table.insert(patch.lines, i, string.rep(" ",indent)..v)
               i=i+1
             end
         elseif keyword == "list" and data == "variables" then
