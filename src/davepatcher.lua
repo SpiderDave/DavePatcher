@@ -761,6 +761,32 @@ Possible keywords:
         Dynamically include another patch file as if it were inserted at this
         line.
     
+    start function <fname>
+    ...
+    end function
+        Define a function named <fname>.  Functions must be defined before used.
+        Example:
+            // Define the function
+            start function exportchr
+                print Warning! About to export entire CHR.  This may take a while.
+                getinput Are you sure? (y/n)
+                if %INPUT% == y
+                    print Exporting CHR...
+                    export %CHRSTART% %CHRSIZE% test.png
+                else
+                    print CHR export aborted.
+                end if
+            end function
+            
+            // Call the function
+            exportchr()
+    
+    run <fname>
+        Call function named <fname>.
+    
+    <fname>()
+        Call function named <fname>.
+    
     use [gd | cairo]
         Initialize graphics to use gd or cairo libraries.
     
@@ -912,6 +938,7 @@ local patch = {
     index = 1,
     includeCount = 0,
     includeLimit = 20,
+    f={},
 }
 
 function patch.load(file, opt)
@@ -1272,8 +1299,6 @@ function imageToTile(len, fileName)
     local w = math.min(16, nTiles)*8
     local colors={}
     for i=0,3 do
-        --print(string.format("%02x %02x %02x",table.unpack(nesPalette[colors[i]])))
-        --colors[i]=image:colorAllocate(table.unpack(patcher.palette[patcher.colors[i]]))
         colors[i]=patcher.palette[patcher.colors[i]]
     end
     local xo=0
@@ -1285,28 +1310,16 @@ function imageToTile(len, fileName)
         for y = 0, 7 do
             out.t[t][y] = 0
             out.t[t][y+8] = 0
-            --local byte = string.byte(tileData:sub(t*16+y+1,t*16+y+1))
-            --local byte2 = string.byte(tileData:sub(t*16+y+9,t*16+y+9))
             for x=0, 7 do
-                --local c=0
-                --if bit.isSet(byte,7-x)==true then c=c+1 end
-                --if bit.isSet(byte2,7-x)==true then c=c+2 end
-                --local c = image:getPixel(x+xo,y+yo)
-                --local r,g,b=image:red(c),image:green(c),image:blue(c)
                 local r,g,b = graphics:getPixel(image, x+xo, y+yo)
                 
                 for i=0,3 do
                     local pr,pg,pb = table.unpack(patcher.palette[patcher.colors[i]])
                     if string.format("%02x%02x%02x",r,g,b) == string.format("%02x%02x%02x",pr,pg,pb) then
-                        --io.write("*")
-                        --out.t[t][y*8+x]=i % 2
-                        --out.t[t][y*8+x+8]=math.floor(i / 2)
                         out.t[t][y]=out.t[t][y] + (2^(7-x)) * (i%2)
                         out.t[t][y+8]=out.t[t][y+8] + (2^(7-x)) * (math.floor(i/2))
                     end
                 end
-                
-                --print(string.format("%02x (%02x,%02x) %02x%02x%02x  %02x%02x%02x",t, x,y, r,g,b,  pr,pg,pb))
             end
         end
         xo=xo+8
@@ -1332,11 +1345,8 @@ function imageToTile3(tileMap, fileName)
         th={},
         pos={},
     }
-    
-    --local nTiles = len/16
     nTiles=32*32
     
-    --local image = gd.createFromPng(fileName)
     local image = graphics:loadPng(fileName)
     local h = math.max(8,math.floor(nTiles/16)*8)
     local w = math.min(16, nTiles)*8
@@ -1346,7 +1356,6 @@ function imageToTile3(tileMap, fileName)
     local colors={}
     for i=0,3 do
         colors[i]=patcher.palette[patcher.colors[i]]
-        --colors[i]=image:colorAllocate(table.unpack(patcher.palette[patcher.colors[i]]))
     end
     local xo=0
     local yo=0
@@ -1360,12 +1369,6 @@ function imageToTile3(tileMap, fileName)
             out[y+8] = 0
             for x=0, 7 do
                 local r,g,b = graphics:getPixel(image, x+xo, y+yo)
---                local c = image:getPixel(x+xo,y+yo) or 0
---                local r,g,b=image:red(c),image:green(c),image:blue(c)
-                
-                --c = image:colorClosestHWB(r,g,b)
-                --r,g,b=image:red(c),image:green(c),image:blue(c)
-                
                 for i=0,3 do
                     local pr,pg,pb = table.unpack(patcher.palette[patcher.colors[i]])
                     if string.format("%02x%02x%02x",r,g,b) == string.format("%02x%02x%02x",pr,pg,pb) then
@@ -1373,7 +1376,6 @@ function imageToTile3(tileMap, fileName)
                         out[y+8]=out[y+8] + (2^(7-x)) * (math.floor(i/2))
                     end
                 end
-                --print(string.format("%02x (%02x,%02x) %02x%02x%02x  %02x%02x%02x",t, x,y, r,g,b,  pr,pg,pb))
             end
         end
         xo=xo+8
@@ -1394,22 +1396,18 @@ function imageToTile3(tileMap, fileName)
         
         t=tm[i].tileNum
         
-        --local tileImageData = f(tm[i].x*tm[i].gridSize,tm[i].y*tm[i].gridSize)
         local tileImageData = f(tm[i].realX,tm[i].realY)
         
         local o=""
         if tm[i].flip.vertical then
             for j=7,0,-1 do
-                --o=o..string.char(out.t[tm[i].y*w/8+tm[i].x][j])
                 o=o..string.char(tileImageData[j])
             end
             for j=15,8,-1 do
-                --o=o..string.char(out.t[tm[i].y*w/8+tm[i].x][j])
                 o=o..string.char(tileImageData[j])
             end
         elseif tm[i].flip.horizontal then
             for j=0,#tileImageData do
-                --local b=out.t[tm[i].y*w/8+tm[i].x][j]
                 local b = tileImageData[j]
                 local b2=0
                 for jj=0,7 do
@@ -1421,15 +1419,12 @@ function imageToTile3(tileMap, fileName)
             end
         else
             for j=0,#tileImageData do
-                --o=o..string.char(out.t[tm[i].y*w/8+tm[i].x][j])
                 o=o..string.char(tileImageData[j])
             end
         end
         
         tileData[i].t = o                           -- the tile data for this tile to be applied
         tileData[i].address = tm[i].address + t*16  -- the address to apply it to
-        --printf("tileNum=%02x %02x,",t,tileData[i].address)
-        --printf("tilemap index=%02x tileNum=%02x pos=(%02x,%02x) %04x %s",i, t, tm[i].x, tm[i].y, tileData[i].address, bin2hex(tileData[i].t))
     end
     
     return tileData
@@ -1443,7 +1438,6 @@ function tileToImage(tileData, fileName)
     local image = graphics:createImage(w,h)
     local colors={}
     for i=0,3 do
-        --print(string.format("%02x %02x %02x",table.unpack(nesPalette[colors[i]])))
         colors[i] = patcher.palette[patcher.colors[i]]
     end
     local xo=0
@@ -1490,10 +1484,8 @@ function tileToImage2(tileMap, fileName)
         image = newImage
     end
     
-    --local image=gd.createTrueColor(w,h)
     local colors={}
     for i=0,3 do
-        --colors[i]=image:colorAllocate(table.unpack(patcher.palette[patcher.colors[i]]))
         colors[i]=patcher.palette[patcher.colors[i]]
     end
     local xo=0
@@ -1504,8 +1496,6 @@ function tileToImage2(tileMap, fileName)
         local address = tm[i].address + tm[i].tileNum*16
         local len = 16
         tileData = patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+len)
-        --printf("address=%08x tileData=%s",address, bin2hex(tileData))
-        --tm[#tm+1]={address=address, tileNum=tileNum, x=x,y=y}
         for y = 0, 7 do
             local byte = string.byte(tileData:sub(y+1,y+1))
             local byte2 = string.byte(tileData:sub(y+9,y+9))
@@ -1522,7 +1512,6 @@ function tileToImage2(tileMap, fileName)
                 end
             end
         end
-        --printf("tilemap index=%02x tileNum=%02x pos=(%02x,%02x) %02x %s",i,tm[i].tileNum, tm[i].x,tm[i].y,address,bin2hex(tileData))
     end
     graphics:savePng(fileName)
     return true
@@ -1584,7 +1573,8 @@ while true do
     local line
     local opt = {indent=0}
     if patcher.interactive==true then
-        io.write(patcher.prompt)
+        --io.write(patcher.prompt)
+        io.stdout:write(patcher.prompt)
         line = io.stdin:read("*l")
         --line = patcher.replaceVariables(line)
     else
@@ -1744,7 +1734,7 @@ while true do
                 for i=1, #results do
                     local a = patcher.getHex(results[i].address+3, methods[method][2])
                     --printf("test 0x%08x %s",results[i].address, a)
-                    if results2_flags[a] or (a=="00" or a=="01" or a=="02") then
+                    if results2_flags[a] or (a=="00" or a=="01" or a=="02" or a=="03") then
                     else
                         results2_flags[a]= true
                         results2[#results2+1] = a
@@ -2085,6 +2075,32 @@ while true do
                 if util.startsWith(line, "end tbl") then break end
                 print(line)
             end
+        elseif util.startsWith(line, "start function ") then
+            local n = util.split(data, " ", 1)[2]
+            patch.f[n]={}
+            while true do
+                line = patch.readLine(false)
+                if util.startsWith(line, "end function") then break end
+                --print(line)
+                patch.f[n][#patch.f[n]+1]=line
+            end
+            printf("Creating function %s",n)
+        elseif keyword=="run" or util.endsWith(keyword, "()") then
+            local fName = data
+            if util.endsWith(keyword, "()") then
+                fName = util.split(keyword, "(", 1)[1]
+            end
+            
+            if not patch.f[fName] then
+                err('Function "%s()" does not exist.',fName)
+            end
+            
+            local i = patch.index
+            local lines = patch.f[fName]
+            for k,v in pairs(lines) do
+              table.insert(patch.lines, i, v)
+              i=i+1
+            end
         elseif keyword == "list" and data == "variables" then
             for _,k in pairs(util.keys(patcher.variables)) do
                 local v = patcher.variables[k]
@@ -2124,7 +2140,8 @@ while true do
                 printVerbose('Compare variable: "%s" == "%s"', k, v)
             end
             
-            if testTrue==true or (patcher.variables[k] == v) or (util.isEqual(patcher.variables[k],v)) then
+            --if testTrue==true or (patcher.variables[k] == v) or (util.isEqual(patcher.variables[k],v)) then
+            if testTrue==true or (k == v) or (util.isEqual(k,v)) then
                 patcher["if"..indent] = true
                 printVerbose(" true")
             else
@@ -2386,17 +2403,11 @@ while true do
             print(string.format("Copying 0x%08x bytes from 0x%08x to 0x%08x",l, address, address2))
             patcher.write(address2+patcher.offset,data)
         elseif keyword == "pause" then
-            --if util.isWindows() then
-            if 0==1 then
-                print("Press any key to continue...")
-                os.execute("pause>nul")
-            else
-                -- ugly fallback for non-windows
-                print("Press enter to continue.")
-                io.stdin:read("*l")
-            end
+            print("Press enter to continue.")
+            io.stdin:read("*l")
         elseif keyword == "getinput" then
-            print(data)
+            --print(data)
+            io.write(data)
             local inp=io.stdin:read("*l")
             patcher.variables["INPUT"] = util.trim(inp)
         elseif line=="break" or line == "quit" or line == "exit" then

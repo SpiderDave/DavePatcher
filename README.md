@@ -1,5 +1,5 @@
 ```
-DavePatcher v2018.06.24 - SpiderDave https://github.com/SpiderDave/DavePatcher
+DavePatcher v2018.06.28 beta - SpiderDave https://github.com/SpiderDave/DavePatcher
 A custom patcher for use with NES romhacking or general use.
 
 Some commands require Lua Cairo (recommended) http://www.dynaset.org/dogusanh/luacairo.html 
@@ -379,6 +379,32 @@ Possible keywords:
         Dynamically include another patch file as if it were inserted at this
         line.
     
+    start function <fname>
+    ...
+    end function
+        Define a function named <fname>.  Functions must be defined before used.
+        Example:
+            // Define the function
+            start function exportchr
+                print Warning! About to export entire CHR.  This may take a while.
+                getinput Are you sure? (y/n)
+                if %INPUT% == y
+                    print Exporting CHR...
+                    export %CHRSTART% %CHRSIZE% test.png
+                else
+                    print CHR export aborted.
+                end if
+            end function
+            
+            // Call the function
+            exportchr()
+    
+    run <fname>
+        Call function named <fname>.
+    
+    <fname>()
+        Call function named <fname>.
+    
     use [gd | cairo]
         Initialize graphics to use gd or cairo libraries.
     
@@ -389,4 +415,4 @@ Possible keywords:
         * disable auto save (see "save" keyword).
 
 
-`````
+```
