@@ -1,5 +1,5 @@
 ```
-DavePatcher v2018.06.28 beta - SpiderDave https://github.com/SpiderDave/DavePatcher
+DavePatcher v2018.07.02 beta - SpiderDave https://github.com/SpiderDave/DavePatcher
 A custom patcher for use with NES romhacking or general use.
 
 Some commands require Lua Cairo (recommended) http://www.dynaset.org/dogusanh/luacairo.html 
@@ -107,7 +107,7 @@ Possible keywords:
         Fill the address at <address> with <data> repeated <count> times.
         
         Example:
-            put a010 06 a900
+            fill a010 06 a900
             
         This is the same as:
             put a010 a900a900a900a900a900a900
@@ -196,8 +196,8 @@ Possible keywords:
         End the patch early and display an error message.  Optionally 
         provide a reason.
         
-    pause (broken at the moment!)
-        Pauses script and waits for user input
+    pause
+        Pauses script and waits for user input.
     
     getinput <text>
         Prompt for user input displaying <text> and store the result in 
@@ -218,7 +218,7 @@ Possible keywords:
             start 10200
             find a901
             
-    offset <address>
+    offset <offset>
         Set the offset to use.  All addresses used and shown will be offset by
         this amount.  This is useful when the file contains a header you'd like
         to skip.
@@ -421,6 +421,9 @@ Possible keywords:
         * "var" keyword is required for variable assignment.
         * break on all warnings.
         * disable auto save (see "save" keyword).
+
+
+``` "save" keyword).
 
 
 ```

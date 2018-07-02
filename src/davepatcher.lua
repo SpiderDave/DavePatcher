@@ -126,6 +126,7 @@ function patcher.getHeader(str)
     }
     
     if header.id~="NES"..string.char(0x1a) then header.valid=false end
+    patcher.variables["INES"]=true
     patcher.variables["CHRSTART"]=header.prg_rom_size*0x4000
     patcher.variables["CHRSIZE"]=header.chr_rom_size*0x2000
     return header
@@ -379,6 +380,24 @@ function util.split(s, delim, max)
   return t
 end
 
+function util.join(a,str)
+    local out=""
+    for i=1,#a do
+        out=out..a[i]
+        if i<#a then
+            out=out..str
+        end
+    end
+    return out
+end
+
+function util.upFolder(path)
+    path=util.split(path, "/")
+    table.remove(path)
+    return util.join(path,"/")
+end
+
+
 patcher.help.extra = [[Some commands require Lua Cairo (recommended) http://www.dynaset.org/dogusanh/luacairo.html 
 --or--
 Lua-GD https://sourceforge.net/projects/lua-gd/
@@ -392,8 +411,8 @@ Usage: davepatcher [options...] <patch file> [<file to patch>]
 Options:
   -h          show help
   -commands   show commands
-  -i          interactive mode (broken at the moment!)
 ]]
+--  -i          interactive mode (broken at the moment!)
 patcher.help.interactive = [[Type "help" for this help, "commands" for more information or "break" to quit.]]
 patcher.help.commands = [[
 Lines starting with // are comments.
@@ -496,7 +515,7 @@ Possible keywords:
         Fill the address at <address> with <data> repeated <count> times.
         
         Example:
-            put a010 06 a900
+            fill a010 06 a900
             
         This is the same as:
             put a010 a900a900a900a900a900a900
@@ -585,8 +604,8 @@ Possible keywords:
         End the patch early and display an error message.  Optionally 
         provide a reason.
         
-    pause (broken at the moment!)
-        Pauses script and waits for user input
+    pause
+        Pauses script and waits for user input.
     
     getinput <text>
         Prompt for user input displaying <text> and store the result in 
@@ -607,7 +626,7 @@ Possible keywords:
             start 10200
             find a901
             
-    offset <address>
+    offset <offset>
         Set the offset to use.  All addresses used and shown will be offset by
         this amount.  This is useful when the file contains a header you'd like
         to skip.
@@ -1497,8 +1516,17 @@ function tileToImage2(tileMap, fileName)
     local w = tm.width
     local h = tm.height
     
-    local image = graphics:loadPng(fileName) or graphics:createImage(w,h) or err("could not create image.")
-    local width, height = image:sizeXY()
+    local image
+    
+    if util.fileExists(fileName) then
+        image = graphics:loadPng(fileName)
+        if not image then err("could not load image.") end
+    else
+        image = graphics:createImage(w,h)
+        if not image then err("could not create image.") end
+    end
+    
+    local width, height = graphics:getSize(image)
     
     if (w > width) or (h > height) then
         -- expand width or height if the tilemap doesn't fit
@@ -1507,6 +1535,7 @@ function tileToImage2(tileMap, fileName)
         if h > newHeight then newHeight = h end
         local newImage = graphics:createImage(newWidth,newHeight)
         graphics:copy(newImage, image, 0,0,width,height,0,0)
+        --graphics:copy(image, newImage, 0,0,width,height,0,0)
         image = newImage
     end
     
@@ -1539,7 +1568,7 @@ function tileToImage2(tileMap, fileName)
             end
         end
     end
-    graphics:savePng(fileName)
+    graphics:savePng(image, fileName)
     return true
 end
 
@@ -1720,13 +1749,22 @@ while true do
         elseif keyword == "include" then
 --            print(love.filesystem.getSourceBaseDirectory( ))
             local path = love.filesystem.getWorkingDirectory( )
-            print("include path: ",path)
+            --print("include path: ",path)
+            
+            
             local f = util.trim(data)
             if util.startsWith(f, "/") then
                 f = patcher.path..f
             else
                 --f = path.."/"..f
             end
+            
+            
+            while util.startsWith(f, "../") do
+                f = util.split(f,"../",1)[2]
+                path=util.upFolder(path)
+            end
+            f = path.."/"..f
 
             local i = patch.index
             
@@ -2024,7 +2062,9 @@ while true do
             if not util.writeToFile(f, 0, out) then err("Could not write to file") end
         elseif util.startsWith(line, "export map ") then
             if not gd then
-                err("could not use export command because gd did not load.")
+                if not cairo then
+                    --err("could not use export command because gd did not load.")
+                end
             end
             local dummy, dummy, tileMap, fileName=unpack(util.split(line," ",3))
             printf("exporting tile map %s to %s",tileMap, fileName)
@@ -2306,7 +2346,7 @@ while true do
                     end
                 elseif line=="" or util.startsWith(line, "//") then
                 else
-                    local tileNum, x, y, flip = unpack(util.split(line," ",3))
+                    local tileNum, x, y, flip = unpack(util.split(util.trim(line)," ",3))
                     tileNum = tonumber(tileNum,16)
                     x = tonumber(x,16)
                     y = tonumber(y,16)
@@ -2350,7 +2390,7 @@ while true do
             address = util.toAddress(address)
             
             txt=data:sub((data:find(" ")+1))
-            print(string.format("Setting ascii text: 0x%08x: %s",address,txt))
+            print(string.format("Setting text: 0x%08x: %s",address,txt))
             txt=string.gsub(txt, "|", string.char(0))
             
             txt=mapText(txt)
