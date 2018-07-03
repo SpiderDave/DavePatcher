@@ -1,7 +1,7 @@
 oldFile = ../../backup/Super Mario Bros. 2 (USA).nes
 
-newFile = SMB2 Improvement.nes
-//newFile = SMB2 Improvement.ips
+//newFile = SMB2 Improvement.nes
+newFile = SMB2 Improvement.ips
 
 // release or test
 build=test
