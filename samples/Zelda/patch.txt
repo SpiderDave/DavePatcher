@@ -1,0 +1,48 @@
+// patch for "Legend of Zelda, The (USA) (Rev A).nes"
+
+include config.txt
+load %oldFile%
+
+header
+include tilemap.txt
+offset 10
+
+// Export link sprite
+//palette 00292717
+//export map link link.png
+
+include improvement.txt
+
+if girl
+    include girl/patch.txt
+end if
+
+if cheats
+    // Don't take damage from half heart damage stuff
+    //put 73ea eaeaea
+    
+    // Invincible (candle still hurts)
+    put 7329 a901ea
+    
+    // Infinite bombs
+    put 6976 eaeaea
+
+    // Infinite keys, and can open doors with 0 keys
+    put 1527d eaea eaeaea
+
+    // arrows don't use rupees
+    put 14e8a eaeaea
+
+    // Shop items and gambling don't subtract rupees
+    put 49e2 eaeaea
+    // No door repair charge
+    put 4891 eaeaea
+    // Can buy items without having enough rupees
+    put 48ed eaea
+    // Can gamble without having enough rupees
+    put 4997 eaea
+end if
+
+
+:end
+save %newFile%

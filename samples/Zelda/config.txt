@@ -1,0 +1,18 @@
+oldFile = ../../backup/Legend of Zelda, The (USA).nes
+
+girl = true
+
+//cheats = true
+
+// Access save screen with start, up+select on controller 1
+// (found in improvement.txt)
+easy_save = true
+
+//ext=.nes
+ext=.ips
+
+// release or test
+build=test
+
+
+newFile = Zelda New%ext%

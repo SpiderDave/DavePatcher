@@ -1,0 +1,56 @@
+// Changes character to a girl with purple hair.
+// She can't use throwing sword or a shield.
+//
+// Sprite is adapted from https://opengameart.org/content/rpg-character-sprites
+
+
+// palette settings
+palette_main = 270f                             // The main two colors not overridden by ring settings
+palette_normal = 13                             // Normal color
+palette_blue_ring = 14                          // Color with blue ring
+palette_red_ring = 15                           // Color with red ring
+palette1 = 0f%palette_normal%%palette_main%     // Outside and other palette
+palette_cave = 160717                           // Cave palette
+
+palette 0013270f
+import map link ./girl/zelda_girl.png
+
+// ring colors (Normal, Blue Ring, Red Ring)
+put a287 %palette_normal%%palette_blue_ring%%palette_red_ring%
+// various palette
+put 19313 %palette1%
+put 1940f %palette1%
+put 1950b %palette1%
+put 19609 %palette_main%                        // Level 3 palette (maybe others)
+put 19703 %palette1%
+put 197ff %palette1%
+put 198fb %palette1%
+put 199f7 %palette1%
+put 19af3 %palette1%
+put 19bef %palette1%
+
+//select screen palettes
+put 19ced %palette_main%                        // slot 1
+put 19cf1 %palette_main%                        // slot 2
+put 19cf5 %palette_main%                        // slot 3
+
+// cave/shop palette
+put 1a265 %palette_cave%
+
+// outside palette
+//put 1930c 183812
+
+
+// can never throw sword
+put 1f86e eaeaeaea
+
+// normal shield can't block
+put 7381 00
+put 738b 00
+// magic shield blocks like normal shield
+put 739b a900ea
+// don't use magic shield graphics
+put 1f325 a900ea
+
+
+

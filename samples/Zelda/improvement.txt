@@ -1,0 +1,87 @@
+// patch for "Legend of Zelda, The (USA) (Rev A).nes"
+// Improvement patch
+
+textmap 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ,!'&."?- 000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222328292a2b632d2e2f
+textmap space 24
+textmap " f8
+
+// these are for story border
+textmap #<>() e6e4e5e2e3
+
+// Base
+text 1a48d   #<>                     ><>#  
+text 1a4b0   (                          )  
+text 1a4d3   )                          (  
+text 1a4f6   (                          )  
+text 1a519   )                          (  
+text 1a53c   (                          )  
+text 1a55f   )                          (  
+text 1a582   (                          )  
+text 1a5a5   )                          (  
+text 1a5c8   (                          )  
+text 1a5eb   )                          (  
+text 1a60e   (                          )  
+text 1a631   )                          (  
+text 1a677   (                          )  
+text 1a6bd   )                          (  
+text 1a6e0   (                          )  
+text 1a703   )                          (  
+text 1a726   (                          )  
+text 1a749   )                          (  
+text 1a76c   (                          )  
+text 1a78f   )                          (  
+text 1a7b2   (                          )  
+text 1a7d5   )                          (  
+text 1a7f8   #<><><><><><><><><><><><><>#  
+
+text 1a48d   #<> THE LEGEND OF ZELDA ><>#  
+text 1a4b0   (                          )  
+text 1a4f6   ( LONG AGO,  GANON, PRINCE )  
+text 1a53c   ( OF DARKNESS,  STOLE  THE )  
+text 1a582   ( TRIFORCE    OF    POWER. )  
+text 1a5c8   ( PRINCESS ZELDA OF HYRULE )  
+text 1a60e   ( BROKE  THE  TRIFORCE  OF )  
+text 1a654   ( WISDOM INTO EIGHT PIECES )  
+text 1a69a   ( AND HID THEM FROM  GANON )  
+text 1a6e0   ( BEFORE SHE WAS KIDNAPPED )  
+text 1a726   ( BY GANON'S MINIONS.      )  
+text 1a76c   ( LINK,  YOU MUST FIND THE )  
+text 1a7b2   ( PIECES  AND SAVE  ZELDA. )  
+text 1a7f8   #<><><><><><><><><><><><><>#  
+
+// base blank coloring with green border, white text
+put 1a823 ff03000000000cff
+put 1a82b ff000000000000ff
+put 1a833 ff000000000000ff
+put 1a83e ff000000000000ff
+put 1a846 ff000000000000ff
+put 1a84e ff000000000000ff
+put 1a856 ffffffffffffffff
+
+// new coloring
+put 1a823 ff0b0a8aaa0a0eff
+put 1a82b ff000000000000ff
+put 1a833 ff050505010000ff
+put 1a83e ff0000000080a0ff
+put 1a846 ff80a020000000ff
+put 1a84e ff0f0000004050ff
+put 1a856 ffffffffffffffff
+
+// coloring for "all of treasures" line, can't figure it out completely
+put 1a85e 2bd002ffff2bd602ffffff2000202424242424242424242424242424242424242424242424242424242424242424202020242424242424242424242424242424
+
+//text 929b <><><># ALL OF TREASURES #<><><>
+// there's an extra space on both sides of the foliage because
+// it's just easier than figuring out the color code atm.
+text 929b <><><><#  ALL TREASURES  #<><><>
+
+//text 92ed RUPY
+text 92ed RUPEE
+
+//text 92fa RUPIES
+text 92fa RUPEES
+
+if easy_save
+    // Save screen: start, up+select on controller 1
+    put 140da a5fa 2928 c928
+end if
