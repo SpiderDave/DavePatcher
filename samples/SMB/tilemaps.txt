@@ -166,3 +166,90 @@ start tilemap goomba
     72 0 d
     73 1 d
 end tilemap
+
+start tilemap flag
+    address = 8000
+    54 2 c
+    55 3 c
+    56 2 d
+    57 3 d
+end tilemap
+
+
+start tilemap koopa
+    address = 8000
+    a0 1 e
+    a1 0 f
+    a2 1 f
+    a3 0 10
+    a4 1 10
+
+    a5 3 e
+    a6 2 f
+    a7 3 f
+    a8 2 10
+    a9 3 10
+
+end tilemap
+
+start tilemap princess
+    address = 8000
+    7a 8 9
+    7b 9 9 
+    da 8 a
+    db 9 a
+    d8 8 b
+    d8 9 b h
+end tilemap
+
+start tilemap mushroom
+    address = 8000
+    76 0 12
+    77 1 12
+    78 0 13
+    79 1 13
+end tilemap
+
+start tilemap flower_bottom
+    address = 8000
+    d9 2 13 
+    d9 3 13 h
+end tilemap
+
+start tilemap flower_top
+    address = 8000
+    d6 2 12
+    d6 3 12 h
+end tilemap
+
+
+start tilemap starman
+    address = 8000
+    8d 4 12 
+    8d 5 12 h
+    e4 4 13 
+    e4 5 13 h
+end tilemap
+
+start tilemap toad
+    address = 8000
+    cd a 9
+    cd b 9 h
+    ce a a
+    ce b a h
+    cf a b
+    cf b b h
+end tilemap
+
+start tilemap beetle
+    address = 8000
+    aa 4 f
+    ab 5 f
+    ac 4 10
+    ad 5 10
+
+    ae 6 f
+    af 7 f
+    b0 6 10
+    b1 7 10
+end tilemap

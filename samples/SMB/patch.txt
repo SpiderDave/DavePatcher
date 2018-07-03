@@ -12,9 +12,27 @@ include tilemaps.txt
 
 skip
     palette 0f162718
-    export map mario mario.png
+    export map mario mario_chill_export.png
     palette 220f3617
-    export map goomba mario.png
+    export map goomba mario_chill_export.png
+    palette 221a3027
+    export map koopa mario_chill_export.png
+    palette 00163027
+    export map flag mario_chill_export.png
+    palette 0f163027
+    export map princess mario_chill_export.png
+    palette 0f163027
+    export map mushroom mario_chill_export.png
+    palette 0f1a3027
+    export map flower_bottom mario_chill_export.png
+    palette 0f163027
+    export map flower_top mario_chill_export.png
+    palette 0f163027
+    export map starman mario_chill_export.png
+    palette 0f163027
+    export map toad mario_chill_export.png
+    palette 220f3617
+    export map beetle mario_chill_export.png
 end skip
 
 // Import Dude Mario graphics with the correct palette
@@ -24,6 +42,42 @@ import map mario mario_chill.png
 // Import Cool Goomba graphics
 palette 220f3617
 import map goomba mario_chill.png
+
+// Import Cool Koopa graphics
+palette 221a3027
+import map koopa mario_chill.png
+
+// Import Castle flag graphics
+palette 00163027
+import map flag mario_chill.png
+
+// Import Princess graphics
+palette 0f163027
+import map princess mario_chill.png
+
+// Import Toad graphics
+palette 0f163027
+import map toad mario_chill.png
+
+// Import mushroom graphics
+palette 0f163027
+import map mushroom mario_chill.png
+
+// Import flower graphics
+palette 0f1a3027
+import map flower_bottom mario_chill.png
+palette 0f163027
+import map flower_top mario_chill.png
+
+// Import starman graphics
+palette 0f163027
+import map starman mario_chill.png
+
+// Import beetle graphics
+palette 220f3617
+import map beetle mario_chill.png
+
+
 
 // Set Mario palette
 put 5d8 372718
@@ -35,17 +89,26 @@ textmap 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-x!.c 000102030405060708090a0b0c0d0e
 textmap space 24
 
 // Make toad a little more chill too
-text d57 SORRY BRO       
-text d6b SORRY WEEG-MAN  
+text d57 THANKS BRO      
+text d6b THANKS WEEG-MAN 
 text d7f PRINCESS AINT HERE BUT
 text d98 YA GOT ME!     
 
+// I knew it all along.  This whole captured thing
+// is just her way of playing hard to get.  Sheesh.
+// *note* Her first line is copied from above "THANKS BRO".  Could use some work.
+text dab ILL GO GET CAUGHT  
+text dc2 AGAIN AND YOU COME GET ME  
+text de1 WINK WINK    
+text df2        CIAO BABE!
+
 if cheats==true
     // Infinite Lives
-    hex 11d9 ad
+    put 11d9 ad
 
     // world select always enabled
     put 26f eaea
 end if
 
+:end
 save %newFile%
