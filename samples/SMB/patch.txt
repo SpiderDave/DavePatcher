@@ -22,17 +22,34 @@ skip
     palette 0f163027
     export map princess mario_chill_export.png
     palette 0f163027
-    export map mushroom mario_chill_export.png
+    export map 00 88 mushroom mario_chill_export.png
     palette 0f1a3027
-    export map flower_bottom mario_chill_export.png
+    export map 10 88 flower_bottom mario_chill_export.png
     palette 0f163027
-    export map flower_top mario_chill_export.png
+    export map 10 88 flower_top mario_chill_export.png
     palette 0f163027
-    export map starman mario_chill_export.png
+    export map 20 88 starman mario_chill_export.png
     palette 0f163027
     export map toad mario_chill_export.png
     palette 220f3617
     export map beetle mario_chill_export.png
+
+    palette 0f1a3027
+    export map 00 98 bowser1 mario_chill_export.png
+    export map 20 98 bowser2 mario_chill_export.png
+    export map 40 98 bowser3 mario_chill_export.png
+
+    palette 0f1a3027
+    export map 20 60 lakitu mario_chill_export.png
+    export map 30 68 lakitu2 mario_chill_export.png
+    
+    palette 220f3010
+    export map 40 60 blooper mario_chill_export.png
+    export map 50 68 blooper2 mario_chill_export.png
+    
+    palette 22163027
+    export map 40 78 cheepcheep mario_chill_export.png
+    export map 50 78 cheepcheep2 mario_chill_export.png
 end skip
 
 // Import Dude Mario graphics with the correct palette
@@ -61,22 +78,42 @@ import map toad mario_chill.png
 
 // Import mushroom graphics
 palette 0f163027
-import map mushroom mario_chill.png
+import map 00 88 mushroom mario_chill.png
 
 // Import flower graphics
 palette 0f1a3027
-import map flower_bottom mario_chill.png
+import map 10 88 flower_bottom mario_chill.png
 palette 0f163027
-import map flower_top mario_chill.png
+import map 10 88 flower_top mario_chill.png
 
 // Import starman graphics
 palette 0f163027
-import map starman mario_chill.png
+import map 20 88 starman mario_chill.png
 
 // Import beetle graphics
 palette 220f3617
 import map beetle mario_chill.png
 
+// Import Cool Bowser graphics
+palette 0f1a3027
+import map 00 98 bowser1 mario_chill.png
+import map 20 98 bowser2 mario_chill.png
+import map 40 98 bowser3 mario_chill.png
+
+// Import DJ Lakitu graphics
+palette 0f1a3027
+import map 20 60 lakitu mario_chill.png
+import map 30 68 lakitu2 mario_chill.png
+
+// Import Blooper graphics
+palette 220f3010
+import map 40 60 blooper mario_chill.png
+import map 50 68 blooper2 mario_chill.png
+
+// Import Cheep Cheep graphics
+palette 22163027
+import map 40 78 cheepcheep mario_chill.png
+import map 50 78 cheepcheep2 mario_chill.png
 
 
 // Set Mario palette
