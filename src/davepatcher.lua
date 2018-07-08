@@ -328,7 +328,8 @@ util.toNumber = function(s, base)
             s = util.split(s,"~d",1)[2]
             base = 10
         end
-        n=tonumber(s, base)*neg
+        n=tonumber(s, base)
+        if n then n=n*neg end
     end
     return n
 end
