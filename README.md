@@ -1,10 +1,12 @@
 ```
-DavePatcher v2018.07.02 beta - SpiderDave https://github.com/SpiderDave/DavePatcher
+DavePatcher v2018.07.08 beta - SpiderDave <https://github.com/SpiderDave/DavePatcher>
 A custom patcher for use with NES romhacking or general use.
 
-Some commands require Lua Cairo (recommended) http://www.dynaset.org/dogusanh/luacairo.html 
+Some commands require Lua Cairo (recommended) <http://www.dynaset.org/dogusanh/luacairo.html>
 --or--
-Lua-GD https://sourceforge.net/projects/lua-gd/
+Lua-GD <https://sourceforge.net/projects/lua-gd/>
+
+This document is in the process of being migrated to an improved format at <http://spiderdave.com/davepatcher/ref.php>
 
 
 Lines starting with // are comments.
@@ -299,13 +301,17 @@ Possible keywords:
             b2 2 3 h
             end tilemap
 
-    export map <tilemap> <file>
-        export tile data to png file using a tile map.
+    export map [<x> <y>] <tilemap> <file>
+        export tile data to png file using a tile map.  If <x> and <y> are 
+        specified, adjust to this position in the image.  You can also use
+        variables "TILEMAPX" and "TILEMAPY" in place of these parameters.
         Example:
             export map batman batman_sprite_test.png
         
-    import map <tilemap> <file>
-        import tile data from png file using a tile map
+    import map [<x> <y>] <tilemap> <file>
+        import tile data from png file using a tile map.  If <x> and <y> are 
+        specified, adjust to this position in the image.  You can also use
+        variables "TILEMAPX" and "TILEMAPY" in place of these parameters.
         Example:
             import map batman batman_sprite_test.png
     
@@ -325,12 +331,12 @@ Possible keywords:
         do not automatically refresh the data after each change.  Use "refresh"
         command manually.
         
-    code
+    code <code>
         Execute Lua code
         Example:
             code print("Hello World!")
         
-    eval
+    eval <expression>
         Evaluate Lua expression and print the result.  The result will also be
         stored in the variable "RESULT".
         Examples:
@@ -421,9 +427,6 @@ Possible keywords:
         * "var" keyword is required for variable assignment.
         * break on all warnings.
         * disable auto save (see "save" keyword).
-
-
-``` "save" keyword).
 
 
 ```

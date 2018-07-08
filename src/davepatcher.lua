@@ -296,6 +296,7 @@ end
 -- hint is a hint on how to format it
 util.toNumber = function(s, hint)
     local n
+    if type(s)=="number" then return s end
     s=util.trim(s)
     if s=="_" then
         n=patcher.results[patcher.results.index].address
@@ -398,11 +399,13 @@ function util.upFolder(path)
 end
 
 
-patcher.help.extra = [[Some commands require Lua Cairo (recommended) http://www.dynaset.org/dogusanh/luacairo.html 
+patcher.help.extra = [[Some commands require Lua Cairo (recommended) <http://www.dynaset.org/dogusanh/luacairo.html>
 --or--
-Lua-GD https://sourceforge.net/projects/lua-gd/
+Lua-GD <https://sourceforge.net/projects/lua-gd/>
+
+This document is in the process of being migrated to an improved format at <http://spiderdave.com/davepatcher/ref.php>
 ]]
-patcher.help.info = string.format("%s %s - %s %s",patcher.info.name,patcher.info.version, patcher.info.author,patcher.info.url)
+patcher.help.info = string.format("%s %s - %s <%s>",patcher.info.name,patcher.info.version, patcher.info.author,patcher.info.url)
 patcher.help.description = "A custom patcher for use with NES romhacking or general use."
 patcher.help.usage = [[
 Usage: davepatcher [options...] <patch file> [<file to patch>]
@@ -707,13 +710,17 @@ Possible keywords:
             b2 2 3 h
             end tilemap
 
-    export map <tilemap> <file>
-        export tile data to png file using a tile map.
+    export map [<x> <y>] <tilemap> <file>
+        export tile data to png file using a tile map.  If <x> and <y> are 
+        specified, adjust to this position in the image.  You can also use
+        variables "TILEMAPX" and "TILEMAPY" in place of these parameters.
         Example:
             export map batman batman_sprite_test.png
         
-    import map <tilemap> <file>
-        import tile data from png file using a tile map
+    import map [<x> <y>] <tilemap> <file>
+        import tile data from png file using a tile map.  If <x> and <y> are 
+        specified, adjust to this position in the image.  You can also use
+        variables "TILEMAPX" and "TILEMAPY" in place of these parameters.
         Example:
             import map batman batman_sprite_test.png
     
@@ -733,12 +740,12 @@ Possible keywords:
         do not automatically refresh the data after each change.  Use "refresh"
         command manually.
         
-    code
+    code <code>
         Execute Lua code
         Example:
             code print("Hello World!")
         
-    eval
+    eval <expression>
         Evaluate Lua expression and print the result.  The result will also be
         stored in the variable "RESULT".
         Examples:
@@ -1405,6 +1412,9 @@ function imageToTile3(tileMap, fileName)
     local xo=0
     local yo=0
     
+    local tilemapX = util.toNumber(patcher.variables["TILEMAPX"] or 0)
+    local tilemapY = util.toNumber(patcher.variables["TILEMAPY"] or 0)
+    
     local f = function(xo,yo)
         local pr,pg,pb = table.unpack(patcher.palette[patcher.colors[3]])
 
@@ -1413,7 +1423,7 @@ function imageToTile3(tileMap, fileName)
             out[y] = 0
             out[y+8] = 0
             for x=0, 7 do
-                local r,g,b = graphics:getPixel(image, x+xo, y+yo)
+                local r,g,b = graphics:getPixel(image, x+xo+tilemapX, y+yo+tilemapY)
                 for i=0,3 do
                     local pr,pg,pb = table.unpack(patcher.palette[patcher.colors[i]])
                     if string.format("%02x%02x%02x",r,g,b) == string.format("%02x%02x%02x",pr,pg,pb) then
@@ -1515,6 +1525,13 @@ function tileToImage2(tileMap, fileName)
     -- get width and height large enough to fit the tilemap
     local w = tm.width
     local h = tm.height
+    local tilemapX = util.toNumber(patcher.variables["TILEMAPX"] or 0)
+    local tilemapY = util.toNumber(patcher.variables["TILEMAPY"] or 0)
+    
+    
+    w=w+tilemapX
+    h=h+tilemapY
+    
     
     local image
     
@@ -1561,9 +1578,9 @@ function tileToImage2(tileMap, fileName)
                 xo=tm[i].x * tm[i].gridSize + tm[i].adjust.x or 0
                 yo=tm[i].y * tm[i].gridSize + tm[i].adjust.y or 0
                 if tm[i].flip.horizontal then
-                    graphics:setPixel(image, 7-x+xo,y+yo, table.unpack(colors[c]))
+                    graphics:setPixel(image, 7-x+xo+ tilemapX,y+yo+ tilemapY, table.unpack(colors[c]))
                 else
-                    graphics:setPixel(image, x+xo,y+yo, table.unpack(colors[c]))
+                    graphics:setPixel(image, x+xo+ tilemapX,y+yo+ tilemapY, table.unpack(colors[c]))
                 end
             end
         end
@@ -2061,12 +2078,24 @@ while true do
             local f = data
             if not util.writeToFile(f, 0, out) then err("Could not write to file") end
         elseif util.startsWith(line, "export map ") then
+            local oldTilemapX = patcher.variables['TILEMAPX']
+            local oldTilemapY = patcher.variables['TILEMAPY']
+
+            data = util.split(data, " ", 1)[2]
+            
+            if util.toNumber(util.split(data, " ")[1]) and util.toNumber(util.split(data, " ")[2]) then
+                patcher.variables['TILEMAPX']=util.toNumber(util.toNumber(util.split(data, " ")[1]), patcher.base)
+                patcher.variables['TILEMAPY']=util.toNumber(util.toNumber(util.split(data, " ")[2]), patcher.base)
+                data = util.split(data, " ", 2)[3]
+            end
+            
             if not gd then
                 if not cairo then
                     --err("could not use export command because gd did not load.")
                 end
             end
-            local dummy, dummy, tileMap, fileName=unpack(util.split(line," ",3))
+            local tileMap = util.split(data," ",1)[1]
+            local fileName = util.split(data," ",1)[2]
             printf("exporting tile map %s to %s",tileMap, fileName)
             local oldPalette
             if patcher.autoPalette and patcher.tileMap[tileMap].palette then
@@ -2079,6 +2108,9 @@ while true do
             if patcher.autoPalette and patcher.tileMap[tileMap].palette then
                 patcher.setPalette(oldPalette)
             end
+            
+            patcher.variables['TILEMAPX'] = oldTilemapX
+            patcher.variables['TILEMAPY'] = oldTilemapY
             
             if not success then
                 printf("Error: %s",err)
@@ -2101,12 +2133,23 @@ while true do
             printVerbose(bin2hex(tileData))
             tileToImage(tileData, fileName)
         elseif util.startsWith(line, "import map ") then
+            local oldTilemapX = patcher.variables['TILEMAPX']
+            local oldTilemapY = patcher.variables['TILEMAPY']
+
+            data = util.split(data, " ", 1)[2]
+            
+            if util.toNumber(util.split(data, " ")[1]) and util.toNumber(util.split(data, " ")[2]) then
+                patcher.variables['TILEMAPX']=util.toNumber(util.toNumber(util.split(data, " ")[1]), patcher.base)
+                patcher.variables['TILEMAPY']=util.toNumber(util.toNumber(util.split(data, " ")[2]), patcher.base)
+                data = util.split(data, " ", 2)[3]
+            end
+
+
 --            if not gd then
 --                err("could not use import command because gd did not load.")
 --            end
-            local dummy, dummy, tileMap, fileName=unpack(util.split(line," ",3))
-            --address=tonumber(address,16)
-            --len=tonumber(len,16)*16
+            local tileMap = util.split(data," ",1)[1]
+            local fileName = util.split(data," ",1)[2]
             
             print(string.format("importing tile map %s",fileName))
             local tileData = imageToTile3(tileMap, fileName)
@@ -2116,6 +2159,9 @@ while true do
                 address,td=tileData[i].address, tileData[i].t
                 patcher.write(address+patcher.offset,td)
             end
+            patcher.variables['TILEMAPX'] = oldTilemapX
+            patcher.variables['TILEMAPY'] = oldTilemapY
+            
         elseif util.startsWith(line, "import ") then
 --            if not gd then
 --                err("could not use import command because gd did not load.")
@@ -2124,7 +2170,7 @@ while true do
             address=tonumber(address,16)
             len=tonumber(len,16)*16
             
-            print(string.format("importing tile at 0x%08x",address))
+            print(string.format("importing tile data at 0x%08x",address))
             local tileData = imageToTile(len, fileName)
             
             patcher.write(address+patcher.offset,tileData)
@@ -2448,7 +2494,7 @@ while true do
             patcher.variables["ADDRESS"] = string.format("%x",address + #newData/2)
         elseif keyword == "gg" then
             local gg=data:upper()
-            gg=util.split(data," ",1)[1] -- Let's allow stuff after the code for descriptions, etc.  figure out a better comment system later.
+            gg=util.split(gg," ",1)[1] -- Let's allow stuff after the code for descriptions, etc.  figure out a better comment system later.
             -- Used to map the GG characters to binary
             local ggMap={
                 A="0000", P="0001", Z="0010", L="0011", G="0100", I="0101", T="0110", Y="0111",
