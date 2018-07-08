@@ -87,7 +87,9 @@ local patcher = {
     },
     base = 16,
     smartSearch={},
-    variables = {},
+    variables = {
+        DEFTYPE="str",
+    },
     autoRefresh = false,
     outputFileName = "output.nes",
     strict=false,
@@ -293,8 +295,8 @@ function util.rtrim(s)
   return s:sub(1, n)
 end
 
--- hint is a hint on how to format it
-util.toNumber = function(s, hint)
+util.toNumber = function(s, base)
+    base = base or patcher.base
     local n
     if type(s)=="number" then return s end
     s=util.trim(s)
@@ -302,7 +304,31 @@ util.toNumber = function(s, hint)
         n=patcher.results[patcher.results.index].address
         patcher.results.index=patcher.results.index+1
     else
-        n=tonumber(s,patcher.base)
+        local neg = 1
+        if util.startsWith(s,"-") then
+            s = util.split(s,"-",1)[2]
+            neg = -1
+        end
+        if util.startsWith(s,"0x") then
+            s = util.split(s,"0x",1)[2]
+            base = 16
+        elseif util.startsWith(s,"0o") then
+            s = util.split(s,"0o",1)[2]
+            base = 8
+        elseif util.startsWith(s,"~h") then
+            s = util.split(s,"~h",1)[2]
+            base = 16
+        elseif util.startsWith(s,"~o") then
+            s = util.split(s,"~o",1)[2]
+            base = 8
+        elseif util.startsWith(s,"~b") then
+            s = util.split(s,"~b",1)[2]
+            base = 2
+        elseif util.startsWith(s,"~d") then
+            s = util.split(s,"~d",1)[2]
+            base = 10
+        end
+        n=tonumber(s, base)*neg
     end
     return n
 end
@@ -2297,17 +2323,29 @@ while true do
 --                end
 --                printf("%s = %s",k,v)
 --            end
-        elseif keyword == "var" then
+        elseif keyword == "deftype" then
+            local t = util.trim(data)
+            if t=="str" or t=="num" or t=="dec" then
+                printf("Default data type: %s",t)
+                patcher.variables.DEFTYPE=t
+            else
+                err("Invalid default data type: %s",t)
+            end
+        elseif (keyword == "str") or (keyword == "var" and patcher.variables.DEFTYPE=="str") then
             local k,v = table.unpack(util.split(data, "=", 1))
             k,v = util.trim(k), util.trim(v)
             patcher.variables[k] = v
             printf('Variable: %s = "%s"', k, v)
-        elseif keyword == "num" then
+        elseif keyword == "num" or (keyword == "var" and (patcher.variables.DEFTYPE=="num")) then
             local k,v = table.unpack(util.split(data, "=", 1))
             k,v = util.trim(k), util.trim(v)
-            patcher.variables[k] = util.toNumber(v, patcher.base)
-            
-            printf('Variable: %s = %s', k, v)
+            patcher.variables[k] = util.toNumber(v)
+            printf('Variable: %s = 0x%x (%s)', k, patcher.variables[k], patcher.variables[k])
+        elseif keyword == "dec" or (keyword == "var" and (patcher.variables.DEFTYPE=="dec")) then
+            local k,v = table.unpack(util.split(data, "=", 1))
+            k,v = util.trim(k), util.trim(v)
+            patcher.variables[k] = util.toNumber(v, 10)
+            printf('Variable: %s = 0x%x (%s)', k, patcher.variables[k], patcher.variables[k])
         elseif keyword == "if" then
             --printf("[%s] indent=%s",keyword, indent)
         
@@ -2461,10 +2499,7 @@ while true do
                     end
                 end
             end
-        elseif keyword == "hex" or keyword == "put" then
-            if keyword == "hex" then
-                warning('depreciated keyword "hex". use "put" instead')
-            end
+        elseif keyword == "put" then
             local address = data:sub(1,(data:find(" ")))
             address = util.toAddress(address)
             
@@ -2803,8 +2838,18 @@ while true do
         elseif util.startsWith(line, ":") then
             -- label, pass.
         elseif (assignment == true) and (patcher.strict~=true) then
-            patcher.variables[keyword] = util.trim(data)
-            printf('Variable: %s = "%s"', keyword, data)
+            if patcher.variables.DEFTYPE=="str" then
+                patcher.variables[keyword] = util.ltrim(data)
+                printf('Variable: %s = "%s"', keyword, data)
+            elseif patcher.variables.DEFTYPE=="num" then
+                local k,v = util.trim(keyword), util.trim(data)
+                patcher.variables[k] = util.toNumber(v)
+                printf('Variable: %s = 0x%x (%s)', k, patcher.variables[k], patcher.variables[k])
+            elseif patcher.variables.DEFTYPE=="dec" then
+                local k,v = util.trim(keyword), util.trim(data)
+                patcher.variables[k] = util.toNumber(v, 10)
+                printf('Variable: %s = 0x%x (%s)', k, patcher.variables[k], patcher.variables[k])
+            end
         else
             if patcher.interactive then
                 print(string.format("unknown command: %s",line))
