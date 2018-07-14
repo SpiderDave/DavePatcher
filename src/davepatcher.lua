@@ -89,6 +89,7 @@ local patcher = {
     smartSearch={},
     variables = {
         DEFTYPE="str",
+        LOGFILE="log.txt",
     },
     autoRefresh = false,
     outputFileName = "output.nes",
@@ -1276,6 +1277,19 @@ function util.writeToFile(file,address, data, wipe)
     return true
 end
 
+function util.logToFile(file, data)
+    if (not util.fileExists(file)) then
+        local f=io.open(file,"w")
+        f:close()
+    end
+    if not data then return nil end
+    local f = io.open(file,"a")
+    if not f then return nil end
+    f:write(data.."\n")
+    f:close()
+    return true
+end
+
 function bin2hex(str)
     local output = ""
     for i = 1, #str do
@@ -1469,19 +1483,41 @@ function imageToTile3(tileMap, fileName)
         return out
     end
 
-    local tileData = ""
+    --local tileData = ""
     local tileData = {} --It's an array here, because it's not guaranteed to be a continuous string of data; it can have gaps.
     
     -- Iterate the tilemap
     for i=1,#tm do
         tileData[i]={}
         
-        t=tm[i].tileNum
+        local t=tm[i].tileNum
+        
         
         local tileImageData = f(tm[i].realX,tm[i].realY)
         
         local o=""
-        if tm[i].flip.vertical then
+        if tm[i].flip.horizontal and tm[i].flip.vertical then
+            for j=7,0,-1 do
+                local b = tileImageData[j]
+                local b2=0
+                for jj=0,7 do
+                    if bit.isSet(b, 7-jj) then
+                        b2=b2+2^jj
+                    end
+                end
+                o=o..string.char(b2)
+            end
+            for j=15,8,-1 do
+                local b = tileImageData[j]
+                local b2=0
+                for jj=0,7 do
+                    if bit.isSet(b, 7-jj) then
+                        b2=b2+2^jj
+                    end
+                end
+                o=o..string.char(b2)
+            end
+        elseif tm[i].flip.vertical then
             for j=7,0,-1 do
                 o=o..string.char(tileImageData[j])
             end
@@ -1489,6 +1525,7 @@ function imageToTile3(tileMap, fileName)
                 o=o..string.char(tileImageData[j])
             end
         elseif tm[i].flip.horizontal then
+            --err('test')
             for j=0,#tileImageData do
                 local b = tileImageData[j]
                 local b2=0
@@ -1604,8 +1641,12 @@ function tileToImage2(tileMap, fileName)
                 if bit.isSet(byte2,7-x)==true then c=c+2 end
                 xo=tm[i].x * tm[i].gridSize + tm[i].adjust.x or 0
                 yo=tm[i].y * tm[i].gridSize + tm[i].adjust.y or 0
-                if tm[i].flip.horizontal then
+                if tm[i].flip.horizontal and tm[i].flip.vertical then
+                    graphics:setPixel(image, 7-x+xo+ tilemapX,7-y+yo+ tilemapY, table.unpack(colors[c]))
+                elseif tm[i].flip.horizontal then
                     graphics:setPixel(image, 7-x+xo+ tilemapX,y+yo+ tilemapY, table.unpack(colors[c]))
+                elseif tm[i].flip.vertical then
+                    graphics:setPixel(image, x+xo+ tilemapX,7-y+yo+ tilemapY, table.unpack(colors[c]))
                 else
                     graphics:setPixel(image, x+xo+ tilemapX,y+yo+ tilemapY, table.unpack(colors[c]))
                 end
@@ -2111,8 +2152,8 @@ while true do
             data = util.split(data, " ", 1)[2]
             
             if util.toNumber(util.split(data, " ")[1]) and util.toNumber(util.split(data, " ")[2]) then
-                patcher.variables['TILEMAPX']=util.toNumber(util.toNumber(util.split(data, " ")[1]), patcher.base)
-                patcher.variables['TILEMAPY']=util.toNumber(util.toNumber(util.split(data, " ")[2]), patcher.base)
+                patcher.variables['TILEMAPX']=util.toNumber(util.toNumber(util.split(data, " ")[1]))
+                patcher.variables['TILEMAPY']=util.toNumber(util.toNumber(util.split(data, " ")[2]))
                 data = util.split(data, " ", 2)[3]
             end
             
@@ -2166,8 +2207,8 @@ while true do
             data = util.split(data, " ", 1)[2]
             
             if util.toNumber(util.split(data, " ")[1]) and util.toNumber(util.split(data, " ")[2]) then
-                patcher.variables['TILEMAPX']=util.toNumber(util.toNumber(util.split(data, " ")[1]), patcher.base)
-                patcher.variables['TILEMAPY']=util.toNumber(util.toNumber(util.split(data, " ")[2]), patcher.base)
+                patcher.variables['TILEMAPX']=util.toNumber(util.toNumber(util.split(data, " ")[1]))
+                patcher.variables['TILEMAPY']=util.toNumber(util.toNumber(util.split(data, " ")[2]))
                 data = util.split(data, " ", 2)[3]
             end
 
@@ -2178,7 +2219,7 @@ while true do
             local tileMap = util.split(data," ",1)[1]
             local fileName = util.split(data," ",1)[2]
             
-            print(string.format("importing tile map %s",fileName))
+            print(string.format("importing tile map %s from %s",tileMap, fileName))
             local tileData = imageToTile3(tileMap, fileName)
             
             local address,td
@@ -2201,6 +2242,10 @@ while true do
             local tileData = imageToTile(len, fileName)
             
             patcher.write(address+patcher.offset,tileData)
+
+        elseif keyword == "log" then
+            local f = patcher.variables.LOGFILE
+            if not util.logToFile(f, data) then err("Could not write to file.") end
         elseif keyword == "goto" then
             local label = util.trim(data)
             local oldPatchIndex = patch.index
@@ -2318,12 +2363,6 @@ while true do
                 end
                 printf("%s = %s",k,v)
             end
---            for k,v in pairs(patcher.variables) do
---                if type(v) == "number" then
---                    v = string.format("%x",v)
---                end
---                printf("%s = %s",k,v)
---            end
         elseif keyword == "deftype" then
             local t = util.trim(data)
             if t=="str" or t=="num" or t=="dec" then
@@ -2431,26 +2470,37 @@ while true do
                     end
                 elseif line=="" or util.startsWith(line, "//") then
                 else
-                    local tileNum, x, y, flip = unpack(util.split(util.trim(line)," ",3))
+                    local tileNum, x, y, f = unpack(util.split(util.trim(line)," ",4))
                     tileNum = tonumber(tileNum,16)
                     x = tonumber(x,16)
                     y = tonumber(y,16)
-                    if flip=="h" then 
-                        flip = {horizontal=true}
-                    else
-                        flip = {}
+                    local flip = {}
+                    
+                    if f=="h" then
+                        flip.horizontal = true
+                    elseif f=="v" then 
+                        flip.vertical = true
+                    elseif f=="hv" then
+                        flip.horizontal = true
+                        flip.vertical = true
                     end
-                    tm[#tm+1]={address=address, tileNum=tileNum,realX=x*gridSize+adjustX,realY=y*gridSize+adjustY, x=x,y=y, flip=flip, adjust = {x=adjustX,y=adjustY}, gridSize = gridSize}
-                    --printf("%s: %s, %s", tileNum, x, y)
+                    
+                    tm[#tm+1]={address=address, tileNum=tileNum,realX=x*gridSize+adjustX,realY=y*gridSize+adjustY, x=x,y=y,flip = {horizontal=flip.horizontal, vertical=flip.vertical}, adjust = {x=adjustX,y=adjustY}, gridSize = gridSize}
                     
                     if x*gridSize+adjustX > tm.width then tm.width = x*gridSize+adjustX end
                     if y*gridSize+adjustY > tm.height then tm.height = y*gridSize+adjustY end
                 end
+
+--                    if flip.vertical and flip.horizontal then
+--                        err("test??")
+--                    end
+
             end
             tm.width=tm.width+8
             tm.height=tm.height+8
 
             patcher.tileMap[n] = tm
+
             --printf("tilemap size: %s %s",tm.width,tm.height)
         elseif keyword == "eval" then
             local f=util.sandbox:loadCode("return "..data)
@@ -2874,8 +2924,6 @@ while true do
     end
 end
 
---if not util.writeToFile("ips_test.nes.ips",0,patcher.makeIPS(patcher.originalFileData,patcher.newFileData)) then err("Could not write to file.") end
---if not util.writeToFile(patcher.outputFileName or "output.nes", 0, patcher.newFileData, true) then err("Could not write to file.") end
 if patcher.saved then
     printf('Patching complete.  Output to file "%s"', patcher.outputFileName)
 else
