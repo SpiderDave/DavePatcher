@@ -269,6 +269,14 @@ function util.endsWith(haystack, needle)
    return needle=='' or string.sub(haystack,-string.len(needle))==needle
 end
 
+function util.limitString(s, limit)
+    limit = limit or 32
+    if #s>limit then
+        s=s:sub(1,limit).."..."
+    end
+    return s
+end
+
 --local condition = load_code("return " .. args.condition, context)
 
 util.printf = function(s,...)
@@ -2060,8 +2068,9 @@ while true do
             local old=patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+len)
             old=bin2hex(old)
             
-            print(string.format("Hex data at 0x%08x: %s",address, old))
+            print(string.format("Hex data at 0x%08x: %s",address, util.limitString(old)))
             patcher.variables["ADDRESS"] = string.format("%x",address + #old/2)
+            patcher.variables["DATA"] = old
         elseif util.startsWith(line, "find text ") then
             local txt=string.sub(line,11)
             address=0
@@ -2394,14 +2403,16 @@ while true do
             if ((not v) and k) and util.isTrue(patcher.variables[k]) then
                 testTrue = true
                 k = util.trim(k)
+                local printVerbose = print
                 printVerbose('Test variable: "%s"', k)
             else
                 k,v = util.trim(k), util.trim(v)
-                printVerbose('Compare variable: "%s" == "%s"', k, v)
+                local printVerbose = print
+                printVerbose(string.format('Compare variable: "%s" == "%s"', k, v))
             end
             
-            --if testTrue==true or (patcher.variables[k] == v) or (util.isEqual(patcher.variables[k],v)) then
-            if testTrue==true or (k == v) or (util.isEqual(k,v)) then
+            if testTrue==true or (patcher.variables[k] == v) or (util.isEqual(patcher.variables[k],v)) then
+            --if testTrue==true or (k == v) or (util.isEqual(k,v)) then
                 patcher["if"..indent] = true
                 printVerbose(" true")
             else
