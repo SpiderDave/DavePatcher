@@ -95,6 +95,7 @@ local patcher = {
     outputFileName = "output.nes",
     strict=false,
     breakLoop=false,
+    tbl={},
 }
 
 patcher.path = love.filesystem.getSourceBaseDirectory()
@@ -132,6 +133,8 @@ function patcher.getHeader(str)
     patcher.variables["INES"]=true
     patcher.variables["CHRSTART"]=header.prg_rom_size*0x4000
     patcher.variables["CHRSIZE"]=header.chr_rom_size*0x2000
+    patcher.variables["PRGCOUNT"]=header.prg_rom_size
+    patcher.variables["CHRCOUNT"]=header.chr_rom_size
     return header
 end
 
@@ -270,11 +273,26 @@ function util.endsWith(haystack, needle)
 end
 
 function util.limitString(s, limit)
-    limit = limit or 32
+    if type(s)~="string" then return s end
+    limit = limit or 0x80
     if #s>limit then
         s=s:sub(1,limit).."..."
     end
     return s
+end
+
+-- return a valid identifier given a string, or nil if it's not valid.
+function util.identifier(id)
+    if not id then return end
+    if type(id)~="string" then return end
+    id=util.trim(id)
+    if id=="" then return end
+    
+    -- first character must be a letter or _
+    -- string must only contain alphanumeric or _
+    if(id:match("^[%a_]+[%w_]?$")) then return id end
+    
+    return
 end
 
 --local condition = load_code("return " .. args.condition, context)
@@ -990,6 +1008,7 @@ function quit(text,...)
 end
 
 function err(text,...)
+    --love.window.showMessageBox("Error", text, "error", false)
     quit("Error: "..text,...)
 end
 
@@ -1141,6 +1160,7 @@ function patch.parseLine(line)
     
     local keyword, data
     keyword, data = unpack(util.split(line," ",1))
+    local keywordOriginal=keyword
     keyword=keyword:lower()
 
     local assignment = false
@@ -1155,8 +1175,8 @@ function patch.parseLine(line)
             assignment = true
         end
     end
-
-    return line, {keyword=keyword, data=data, assignment=assignment}
+    
+    return line, {keyword=keyword, data=data, assignment=assignment,keywordOriginal=keywordOriginal}
 end
 
 
@@ -1247,7 +1267,6 @@ end
 
 -- Write data to patcher.newFileData
 function patcher.write(address, data)
-    
     local old=patcher.fileData:sub(address+1,address+#data)
     old=bin2hex(old)
     local new = bin2hex(data)
@@ -1311,6 +1330,10 @@ function hex2bin(str)
     local output = ""
     for i = 1, (#str/2) do
         local c = str:sub(i*2-1,i*2)
+        
+        -- Not a hex digit, return nil
+        if not tonumber(c, 16) then return end
+        
         output=output..string.char(tonumber(c, 16))
     end
     return output
@@ -1771,8 +1794,10 @@ while true do
     line, opt = patch.parseLine(line)
     
     local keyword = opt.keyword
+    local keywordOriginal = opt.keywordOriginal
     local data = opt.data
     local assignment = opt.assignment
+    local fillVar = nil
     
     
     patcher.lineQueue={}
@@ -1795,6 +1820,8 @@ while true do
     for r=1,math.max(#patcher.lineQueue, 1) do
         if #patcher.lineQueue>=1 then
             --patcher.lineQueue[r].line = patcher.replaceVariables(patcher.lineQueue[r].line)
+            patcher.variables.INDEX = lineRepeat
+            
             line=patcher.lineQueue[r].line
             --line = patcher.replaceVariables(line)
             
@@ -1805,11 +1832,24 @@ while true do
             line, opt = patch.parseLine(line)
             
             keyword = opt.keyword
+            keywordOriginal = opt.keywordOriginal
             data = opt.data
             assignment = opt.assignment
             
             
             --keyword,data=patcher.lineQueue[r].keyword,patcher.lineQueue[r].data
+        end
+        
+        if util.split(data or "","-->",1)[2] then
+            fillVar = util.split(data,"-->",1)[2]
+            data = util.split(data,"-->",1)[1]
+            line = util.split(line,"-->",1)[1]
+        end
+        
+        if util.split(keyword or "","-->",1)[2] then
+            fillVar = util.split(keyword,"-->",1)[2]
+            keyword = util.split(keyword,"-->",1)[1]
+            line = util.split(line,"-->",1)[1]
         end
         
         if util.startsWith(line, "#") then
@@ -1827,6 +1867,9 @@ while true do
             local choice = util.split(data," ")
             choice = choice[rng:random(1, #choice)]
             patcher.variables['CHOICE'] = choice
+        elseif keyword == "_random" then
+            local r = rng:random(0, 255)
+            patcher.variables['RET'] = r
         elseif util.startsWith(line, "//") then
             -- comment
         elseif keyword == "verbose" or keyword == "strict" or keyword == "annotations" then
@@ -2058,6 +2101,8 @@ while true do
             patcher.variables["ADDRESS"] = string.format("%x",address + #old/2)
         elseif keyword == "get" then
             local data=string.sub(line,5)
+            --local address = util.split(data, " ",1)[1]
+            --local len = util.split(data, " ",1)[2]
 
             local address = data:sub(1,(data:find(" ")))
             address = util.toAddress(address)
@@ -2071,6 +2116,7 @@ while true do
             print(string.format("Hex data at 0x%08x: %s",address, util.limitString(old)))
             patcher.variables["ADDRESS"] = string.format("%x",address + #old/2)
             patcher.variables["DATA"] = old
+            patcher.variables["RET"] = old
         elseif util.startsWith(line, "find text ") then
             local txt=string.sub(line,11)
             address=0
@@ -2202,13 +2248,20 @@ while true do
             if not address then err("missing export address") end
             if not len then err("missing export length") end
             if not fileName then err("missing export fileName") end
-            address=tonumber(address,16)
+            --address=tonumber(address,16)
+            address = util.toAddress(address)
             len=tonumber(len,16)*16
             print(string.format("exporting tile data at 0x%08x",address))
             
             tileData = patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+len)
             printVerbose(bin2hex(tileData))
             tileToImage(tileData, fileName)
+
+            patcher.variables["ADDRESS"] = string.format("%x",address + len)
+            --patcher.variables["DATA"] = bin2hex(tileData)
+            --patcher.variables["RET"] = 
+
+
         elseif util.startsWith(line, "import map ") then
             local oldTilemapX = patcher.variables['TILEMAPX']
             local oldTilemapY = patcher.variables['TILEMAPY']
@@ -2272,7 +2325,7 @@ while true do
             if patcher.gotoCount >= patcher.gotoLimit then
                 err("goto limit reached (could be infinite loop).")
             end
-        elseif keyword == "skip" then
+        elseif keyword == "skip" or util.startsWith(line, "start skip") then
             local nSkipped = 0
             while true do
                 nSkipped = nSkipped +1
@@ -2301,13 +2354,29 @@ while true do
             end
             --print(string.format("skipped %d lines.", nSkipped-1))
         elseif util.startsWith(line, "start loop") then
+            if util.split(line, "start loop",1)[2] then
+                patcher.variables.LOOPEND = util.toNumber(util.split(line, "start loop",1)[2])
+                patcher.variables.RET = patcher.variables.LOOPEND
+            else
+                patcher.variables.LOOPEND = nil
+            end
             --printf("start loop %s",patch.index)
             patch.loopStack:push(patch.index)
+            patcher.variables.INDEX = 1
+            
         elseif util.startsWith(line, "end loop") then
             --local i=patch.loopStack:pop()
             local i=patch.loopStack:last()
             --printf("end loop %s %s %s",i,patch.index,patch.lines[i])
-            patch.index = i
+            
+            if patcher.variables.LOOPEND and (patcher.variables.INDEX >= patcher.variables.LOOPEND) then
+                patch.loopStack:pop()
+            else
+                patcher.variables.INDEX = (patcher.variables.INDEX or 1)+ 1
+                patch.index = i
+            end
+            --patcher.variables.RET = patcher.variables.INDEX
+            --patcher.variables.INDEX = 1
             --line = patch.readLine()
         elseif util.startsWith(line, "break loop") then
             local i=patch.loopStack:pop()
@@ -2323,10 +2392,20 @@ while true do
                 print(line)
             end
         elseif util.startsWith(line, "start tbl") then
+            local tableName=util.identifier(util.split(data, " ",1)[2])
+            printf("tbl %s",tableName or "(default)")
+            tableName=tableName or "default"
+            patcher.tbl[tableName]=patcher.tbl[tableName] or {}
             while true do
                 line = patch.readLine()
+                
+                if #util.split(line, "=",1)>1  then
+                    textMap=textMap or {}
+                    textMap[util.split(line, "=",1)[2]]=hex2bin(util.split(line, "=",1)[1])
+                    patcher.tbl[tableName][hex2bin(util.split(line, "=",1)[1])]=util.split(line, "=",1)[2]
+                end
+                
                 if util.startsWith(line, "end tbl") then break end
-                print(line)
             end
         elseif util.startsWith(line, "start function") then
             local n = util.trim(util.split(data, " ", 1)[2])
@@ -2335,7 +2414,6 @@ while true do
             elseif n:find(" ") then
                 err('Invalid function name "%s"',n)
             end
-            
             local n = util.split(data, " ", 1)[2]
             patch.f[n]={}
             while true do
@@ -2346,11 +2424,12 @@ while true do
                 patch.f[n][#patch.f[n]+1]=string.rep(" ",opt.indent)..line
                 --print("******"..string.rep(" ",opt.indent)..line)
             end
+            local printVerbose=printf
             printVerbose("Creating function %s",n)
         elseif keyword=="run" or util.endsWith(keyword, "()") then
             local fName = data
             if util.endsWith(keyword, "()") then
-                fName = util.split(keyword, "(", 1)[1]
+                fName = util.split(keywordOriginal, "(", 1)[1]
             end
             
             if not patch.f[fName] then
@@ -2364,6 +2443,13 @@ while true do
               table.insert(patch.lines, i, string.rep(" ",indent)..v)
               i=i+1
             end
+            
+            -- Defer fillVar to the end of the function
+            if fillVar then
+                table.insert(patch.lines, i, string.rep(" ",indent).."-->"..fillVar)
+                fillVar = nil
+            end
+            
         elseif keyword == "list" and data == "variables" then
             for _,k in pairs(util.keys(patcher.variables)) do
                 local v = patcher.variables[k]
@@ -2403,11 +2489,10 @@ while true do
             if ((not v) and k) and util.isTrue(patcher.variables[k]) then
                 testTrue = true
                 k = util.trim(k)
-                local printVerbose = print
                 printVerbose('Test variable: "%s"', k)
             else
                 k,v = util.trim(k), util.trim(v)
-                local printVerbose = print
+                --local printVerbose = print
                 printVerbose(string.format('Compare variable: "%s" == "%s"', k, v))
             end
             
@@ -2567,6 +2652,11 @@ while true do
             
             local newData=data:sub((data:find(" ")+1))
             newData = util.stripSpaces(newData)
+            if hex2bin(newData)==nil then
+                err('Bad parameter "%s"\nLine: "%s"',newData, line)
+            end
+            if #newData == 1 then newData = "0"..newData end
+            
             
             old=patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+#newData/2)
             old=bin2hex(old)
@@ -2697,11 +2787,13 @@ while true do
         elseif keyword=="error" then
             -- line numbers aren't useful yet due to the way include works
             --printf("Error!: %s %s\n", patch.index-1, data)
-            if data then
-                printf("Error!: %s\n", data)
-            else
-                printf("Error!\n")
-            end
+--            if data then
+--                printf("Error!: %s\n", data)
+--            else
+--                printf("Error!\n")
+--            end
+            
+            err(data or "")
             patcher.breakLoop=true
             patcher.breakType = "break"
         elseif keyword=="refresh" then
@@ -2787,11 +2879,12 @@ while true do
             diff.fileName = data
             diff.data = getfilecontents(diff.fileName)
             diff.count=1
-            printf("file1: %s bytes",#patcher.fileData)
-            printf("file2: %s bytes",#diff.data)
-            for i = 0,#patcher.fileData do
-                diff.old =string.byte(patcher.fileData:sub(i+1,i+1))
-                diff.new =string.byte(diff.data:sub(i+1,i+1))
+            printf("current file: %s bytes",#patcher.fileData)
+            printf("%s: %s bytes",diff.fileName, #diff.data)
+            for i = 0,#patcher.fileData -1 do
+                diff.old =string.byte(patcher.fileData:sub(i+patcher.offset+1,i+patcher.offset+1))
+                diff.new =string.byte(diff.data:sub(i+patcher.offset+1,i+patcher.offset+1))
+                --printf("%02x %06x  %02x | %02x",diff.count, i, diff.old,diff.new)
                 if diff.old~=diff.new then
                     printf("%02x %06x  %02x | %02x",diff.count, i, diff.old,diff.new)
                     diff.count=diff.count+1
@@ -2902,7 +2995,7 @@ while true do
         elseif (assignment == true) and (patcher.strict~=true) then
             if patcher.variables.DEFTYPE=="str" then
                 patcher.variables[keyword] = util.ltrim(data)
-                printf('Variable: %s = "%s"', keyword, data)
+                printf('Variable: %s = "%s"', keyword, util.ltrim(data))
             elseif patcher.variables.DEFTYPE=="num" then
                 local k,v = util.trim(keyword), util.trim(data)
                 patcher.variables[k] = util.toNumber(v)
@@ -2921,6 +3014,12 @@ while true do
                 end
             end
         end
+        
+        if fillVar then
+            printf('-->Variable: %s = %s', fillVar, util.limitString(patcher.variables.RET))
+            patcher.variables[fillVar] = patcher.variables.RET
+        end
+        
     end
     end --loopCount
     end)

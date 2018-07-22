@@ -1,5 +1,5 @@
 ```
-DavePatcher v2018.07.14 beta - SpiderDave <https://github.com/SpiderDave/DavePatcher>
+DavePatcher v2018.07.22 beta - SpiderDave <https://github.com/SpiderDave/DavePatcher>
 A custom patcher for use with NES romhacking or general use.
 
 Some commands require Lua Cairo (recommended) <http://www.dynaset.org/dogusanh/luacairo.html>
