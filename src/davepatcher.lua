@@ -47,6 +47,8 @@ local executionTime = os.clock()
 
 table.unpack = table.unpack or unpack
 
+local util = require("include.util")
+util.deque = require("include.deque")
 local graphics = require("include.graphics")
 
 require "os"
@@ -140,8 +142,13 @@ end
 
 function patcher.load(f)
     patcher.fileName = f or patcher.fileName
+
+    if not util.fileExists(patcher.fileName) then
+        err('The file "%s" does not exist.', patcher.fileName)
+    end
+
     printf("Loading file: %s",patcher.fileName)
-    patcher.fileData = getfilecontents(patcher.fileName)
+    patcher.fileData = util.getFileContents(patcher.fileName)
     patcher.originalFileData = patcher.fileData
     patcher.newFileData = patcher.fileData
     pcall(function()
@@ -224,103 +231,7 @@ patcher.getHex = function(address, len)
 end
 
 
-local util={}
-
-util.deque = require("include.deque")
-
-function util.isWindows()
-    return (package.config:sub(1,1)=="\\")
-end
-
-function util.keys(t)
-    local keys={}
-    local ikeys={}
-    for k,v in pairs(t) do
-        if type(k)=="string" then
-            keys[#keys+1]=k
-        elseif type(k)=="number" then
-            ikeys[#ikeys+1]=k
-        end
-    end
-
-    table.sort(keys)
-    table.sort(ikeys)
-    
-    local newTable = {}
-    for k,v in pairs(ikeys) do
-      newTable[#newTable+1]=v
-    end
-    for k,v in pairs(keys) do
-      newTable[#newTable+1]=v
-    end
-    return newTable
-end
-
-function util.switch(s, default)
-    s=util.trim(s)
-    if s == "true" or s == "on" then return true end
-    if s == "false" or s == "off" then return false end
-    if s == "" or s==nil then return default end
-    return nil, true
-end
-
-function util.startsWith(haystack, needle)
-    return string.sub(haystack, 1, string.len(needle)) == needle
-end
-
-function util.endsWith(haystack, needle)
-   return needle=='' or string.sub(haystack,-string.len(needle))==needle
-end
-
-function util.limitString(s, limit)
-    if type(s)~="string" then return s end
-    limit = limit or 0x80
-    if #s>limit then
-        s=s:sub(1,limit).."..."
-    end
-    return s
-end
-
--- return a valid identifier given a string, or nil if it's not valid.
-function util.identifier(id)
-    if not id then return end
-    if type(id)~="string" then return end
-    id=util.trim(id)
-    if id=="" then return end
-    
-    -- first character must be a letter or _
-    -- string must only contain alphanumeric or _
-    if(id:match("^[%a_]+[%w_]?$")) then return id end
-    
-    return
-end
-
 --local condition = load_code("return " .. args.condition, context)
-
-util.printf = function(s,...)
-    --return io.write(s:format(...))
-    --return print(s:format(...))
-    return print(s:format(...))
-end
-
-util.stripSpaces = function(s)
-    return string.gsub(s, "%s", "")
-end
-
-function util.trim(s)
-    --if type(s)~="string" then return tostring(s) end
-    if not s then return end
-    return (s:gsub("^%s*(.-)%s*$", "%1"))
-end
-
-function util.ltrim(s)
-  return (s:gsub("^%s*", ""))
-end
-function util.rtrim(s)
-  local n = #s
-  while n > 0 and s:find("^%s", n) do n = n - 1 end
-  return s:sub(1, n)
-end
 
 util.toNumber = function(s, base)
     base = base or patcher.base
@@ -412,45 +323,6 @@ patcher.asm = asm
 --    end
 --end
 
-function util.split(s, delim, max)
-  assert (type (delim) == "string" and string.len (delim) > 0,
-          "bad delimiter")
-  assert(max == nil or max >= 1)
-  local start = 1
-  local t = {}
-  local nSplits = 0
-  while true do
-    if max then
-        if nSplits>= max then break end
-    end
-    local pos = string.find (s, delim, start, true) -- plain find
-    if not pos then
-      break
-    end
-    nSplits=nSplits+1
-    table.insert (t, string.sub (s, start, pos - 1))
-    start = pos + string.len (delim)
-  end
-  table.insert (t, string.sub (s, start))
-  return t
-end
-
-function util.join(a,str)
-    local out=""
-    for i=1,#a do
-        out=out..a[i]
-        if i<#a then
-            out=out..str
-        end
-    end
-    return out
-end
-
-function util.upFolder(path)
-    path=util.split(path, "/")
-    table.remove(path)
-    return util.join(path,"/")
-end
 
 
 patcher.help.extra = [[Some commands require Lua Cairo (recommended) <http://www.dynaset.org/dogusanh/luacairo.html>
@@ -596,15 +468,6 @@ function warning(text,...)
     if patcher.strict ==true then
         quit()
     end
-end
-
-function getfilecontents(path)
-    local file = io.open(path,"rb")
-    if file==nil then return nil end
-    io.input(file)
-    ret=io.read("*a")
-    io.close(file)
-    return ret
 end
 
 local patch = {
@@ -776,11 +639,6 @@ function patch.readLine(replaceVariables)
     return line, {indent=indent}
 end
 
-function util.fileExists(name)
-   local f=io.open(name,"r")
-   if f~=nil then io.close(f) return true else return false end
-end
-
 -- this stuff taken from bitty:
 local tconcat = table.concat
 local floor, ceil, max, log =
@@ -868,54 +726,9 @@ function patcher.write(address, data)
     end
 end
 
-function util.writeToFile(file,address, data, wipe)
-    if wipe==true or (not util.fileExists(file)) then
-        local f=io.open(file,"w")
-        f:close()
-    end
-    if not data then return nil end
-    local f = io.open(file,"r+b")
-    if not f then return nil end
-    f:seek("set",address)
-    f:write(data)
-    f:close()
-    return true
-end
+bin2hex=util.bin2hex
+hex2bin=util.hex2bin
 
-function util.logToFile(file, data)
-    if (not util.fileExists(file)) then
-        local f=io.open(file,"w")
-        f:close()
-    end
-    if not data then return nil end
-    local f = io.open(file,"a")
-    if not f then return nil end
-    f:write(data.."\n")
-    f:close()
-    return true
-end
-
-function bin2hex(str)
-    local output = ""
-    for i = 1, #str do
-        local c = string.byte(str:sub(i,i))
-        output=output..string.format("%02x", c)
-    end
-    return output
-end
-
-function hex2bin(str)
-    local output = ""
-    for i = 1, (#str/2) do
-        local c = str:sub(i*2-1,i*2)
-        
-        -- Not a hex digit, return nil
-        if not tonumber(c, 16) then return end
-        
-        output=output..string.char(tonumber(c, 16))
-    end
-    return output
-end
 
 function rawToNumber(d)
     -- msb first
@@ -1316,12 +1129,9 @@ if arg[1] == "-nofile" then
         "end function",
         "interactive()",
         "break",
-
     }
 
-
     patch.index = 1
-    
     
     local opt = {
         nofile=true,
@@ -1843,6 +1653,10 @@ while true do
 --            end
             local tileMap = util.split(data," ",1)[1]
             local fileName = util.split(data," ",1)[2]
+            
+            if not util.fileExists(fileName) then
+                err('The file "%s" does not exist.', fileName)
+            end
             
             print(string.format("importing tile map %s from %s",tileMap, fileName))
             local tileData = imageToTile3(tileMap, fileName)
@@ -2390,7 +2204,7 @@ while true do
             patcher.fileName = data
             file = data
             printf("File: %s",patcher.fileName)
-            --patcher.fileData=getfilecontents(patcher.fileName)
+            --patcher.fileData=util.getFileContents(patcher.fileName)
         elseif keyword=="load" then
             patcher.load(data)
         elseif keyword=="save" then
@@ -2400,7 +2214,7 @@ while true do
         elseif keyword=="outputfile" then
             patcher.outputFileName = data
             printf("Output file: %s",patcher.outputFileName)
-            --patcher.fileData=getfilecontents(patcher.fileName)
+            --patcher.fileData=util.getFileContents(patcher.fileName)
         elseif keyword == "start" then
             patcher.startAddress = tonumber(data, 16)
             print("Setting Start Address: "..data)
@@ -2415,7 +2229,7 @@ while true do
                 patcher.autoPalette = false
             elseif util.startsWith(data, "file") then
                 local fileName = util.split(data, " ", 1)[2]
-                local fileData = getfilecontents(fileName)
+                local fileData = util.getFileContents(fileName)
                 
                 patcher.palette = {}
                 i=1
@@ -2440,7 +2254,7 @@ while true do
         elseif keyword == "diff" then
             local diff={}
             diff.fileName = data
-            diff.data = getfilecontents(diff.fileName)
+            diff.data = util.getFileContents(diff.fileName)
             diff.count=1
             printf("current file: %s bytes",#patcher.fileData)
             printf("%s: %s bytes",diff.fileName, #diff.data)
@@ -2459,9 +2273,14 @@ while true do
             ips.nRecords = 0
             ips.nRLE = 0
             ips.n=string.sub(line,5)
+            
+            if not util.fileExists(ips.n) then
+                err('The file "%s" does not exist.', ips.n)
+            end
+            
             print("Applying ips patch: "..ips.n)
             --ips.file = io.open(ips.n,"r")
-            ips.data = getfilecontents(ips.n)
+            ips.data = util.getFileContents(ips.n)
             --print(#ips.data)
             ips.header = ips.data:sub(1,5)
             if ips.header ~= "PATCH" then quit ("Error: Invalid ips header.") end
