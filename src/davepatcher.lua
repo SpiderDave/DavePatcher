@@ -738,17 +738,6 @@ end
 bin2hex=util.bin2hex
 hex2bin=util.hex2bin
 
-
-function rawToNumber(d)
-    -- msb first
-    local v = 0
-    for i=1,#d do
-        v = v * 256
-        v = v + d:sub(i,i):byte()
-    end
-    return v
-end
-
 function makepointer(addr,returnbinary)
     local a,p,pbin
     returnbinary=returnbinary or nil
@@ -2253,7 +2242,7 @@ while true do
                 for c=0,63 do
                     patcher.palette[c]={}
                     for i=1,3 do
-                        patcher.palette[c][i]=rawToNumber(fileData:sub(c*3+i,c*3+i))
+                        patcher.palette[c][i]=util.rawToNumber(fileData:sub(c*3+i,c*3+i))
                     end
                 end
             elseif #data==8 then
@@ -2336,16 +2325,16 @@ while true do
     --                err("Early end of file")
     --            end
                 --print(#ips.offset)
-                ips.offset = rawToNumber(ips.offset)
+                ips.offset = util.rawToNumber(ips.offset)
                 printVerbose(string.format("offset: 0x%08x",ips.offset))
                 ips.address = ips.address + 3
-                ips.chunkSize = rawToNumber(ips.data:sub(ips.address+1,ips.address+2))
+                ips.chunkSize = util.rawToNumber(ips.data:sub(ips.address+1,ips.address+2))
                 printVerbose(string.format("chunkSize: 0x%08x",ips.chunkSize))
                 ips.address = ips.address + 2
                 if ips.chunkSize == 0 then
                     -- RLE
                     printVerbose(string.format("RLE detected at: 0x%08x",ips.address))
-                    ips.chunkSize = rawToNumber(ips.data:sub(ips.address+1,ips.address+2))
+                    ips.chunkSize = util.rawToNumber(ips.data:sub(ips.address+1,ips.address+2))
                     ips.address = ips.address + 2
                     if ips.chunkSize == 0 then err("bad RLE size") end
                     printVerbose(string.format("RLE length: 0x%08x",ips.chunkSize))

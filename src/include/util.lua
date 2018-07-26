@@ -208,4 +208,15 @@ function util.deleteFile(f)
     os.remove(f)
 end
 
+function util.rawToNumber(d)
+    -- msb first
+    local v = 0
+    for i=1,#d do
+        v = v * 256
+        v = v + d:sub(i,i):byte()
+    end
+    return v
+end
+
+
 return util
