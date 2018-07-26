@@ -204,5 +204,8 @@ function util.getFileContents(path)
     return ret
 end
 
+function util.deleteFile(f)
+    os.remove(f)
+end
 
 return util

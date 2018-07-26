@@ -451,6 +451,15 @@ end
 
 function quit(text,...)
     if text then printf(text,...) end
+
+
+    if patcher.autolog then
+        util.deleteFile(patcher.path.."/autolog.txt")
+        if not util.logToFile(patcher.path.."/autolog.txt", patcher.textOut) then err("Could not write to file.") end
+    end
+
+
+
     if love then
         love.event.push('quit')
     end
@@ -1082,6 +1091,14 @@ end
 if arg[1]=="-readme" then
     print("-readme switch no longer supported.")
     quit()
+end
+
+if arg[1]=="-autolog" then
+    patcher.autolog=true
+    print=function(txt)
+        patcher.textOut=(patcher.textOut or "")..txt.."\n"
+    end
+    table.remove(arg,1)
 end
 
 if arg[1]=="-?" or arg[1]=="/?" or arg[1]=="/help" or arg[1]=="/h" or arg[1]=="-h" then
@@ -2421,4 +2438,5 @@ else
 end
 
 printVerbose(string.format("\nelapsed time: %.2f\n", os.clock() - executionTime))
+
 quit()
