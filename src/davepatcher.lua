@@ -1082,7 +1082,12 @@ if arg[1]=="-readme" then
     quit()
 end
 
-if arg[1]=="-autolog" then
+if arg[1]=="-launcher" then
+    -- patcher was launched from the launcher.
+    patcher.launcher = true
+end
+
+if arg[1]=="-autolog" or arg[1]=="-launcher" then
     patcher.autolog=true
     print=function(txt)
         patcher.textOut=(patcher.textOut or "")..txt.."\n"
@@ -1419,6 +1424,11 @@ while true do
             while true do
             --for i=1,50 do
                 address = patcher.fileData:find(hex2bin(findValue),address+1+patcher.offset, true)
+                if (address or 0) > #patcher.fileData-1 then
+                    patcher.variables["ADDRESS"] = 0
+                    break
+                end
+
                 if address then
                     if address>patcher.startAddress+patcher.offset then
                         print(string.format("    %s Found at 0x%08x, replacing with %s",findValue,address-1-patcher.offset,replaceValue))
@@ -1434,6 +1444,7 @@ while true do
             patcher.results.index = 1
             if #patcher.results > 0 then
                 patcher.lastFound = patcher.results[1].address
+                patcher.variables["ADDRESS"] = patcher.results[#patcher.results].address+1
             else
                 patcher.lastFound = nil
             end
@@ -2156,7 +2167,11 @@ while true do
             patcher.write(address2+patcher.offset,data)
         elseif keyword == "pause" then
             print("Press enter to continue.")
-            io.stdin:read("*l")
+            if patcher.launcher then
+                print("*pause skipped*")
+            else
+                io.stdin:read("*l")
+            end
         elseif keyword == "getinput" then
             --print(data)
             io.write(data)
@@ -2222,8 +2237,9 @@ while true do
             printf("Output file: %s",patcher.outputFileName)
             --patcher.fileData=util.getFileContents(patcher.fileName)
         elseif keyword == "start" then
-            patcher.startAddress = tonumber(data, 16)
-            print("Setting Start Address: "..data)
+            --patcher.startAddress = tonumber(data, 16)
+            patcher.startAddress = util.toAddress(data)
+            printf("Setting Start Address: %04x", patcher.startAddress)
         elseif keyword == "offset" then
             patcher.offset = tonumber(data, 16)
             print("Setting offset: "..data)
@@ -2427,5 +2443,6 @@ else
 end
 
 printVerbose(string.format("\nelapsed time: %.2f\n", os.clock() - executionTime))
+
 
 quit()
