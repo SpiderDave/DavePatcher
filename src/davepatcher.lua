@@ -1877,26 +1877,32 @@ while true do
             printf('Variable: %s = 0x%x (%s)', k, patcher.variables[k], patcher.variables[k])
         elseif keyword == "if" then
             --printf("[%s] indent=%s",keyword, indent)
-        
+            
             local k,v = table.unpack(util.split(data, "=="))
+            --printVerbose('Variable debug: k="%s" v="%s" v[k]=%s', k,v, patcher.variables[k])
             local testTrue = false
-            if ((not v) and k) and util.isTrue(patcher.variables[k]) then
+            if ((not v) and k) then
+                testTrue = util.isTrue(patcher.variables[k])
+            elseif (patcher.variables[k] == util.trim(v)) or (util.isEqual(patcher.variables[k],util.trim(v))) then
                 testTrue = true
-                k = util.trim(k)
-                printVerbose('Test variable: "%s"', k)
+            end
+            if ((not v) and k) and util.isTrue(patcher.variables[k]) then
+                --testTrue = true
+                --k = util.trim(k)
+                --printVerbose('Test variable: "%s"', k)
             else
-                k,v = util.trim(k), util.trim(v)
-                --local printVerbose = print
-                printVerbose(string.format('Compare variable: "%s" == "%s"', k, v))
+                --k,v = util.trim(k), util.trim(v)
+                --printVerbose(string.format('Compare variable: "%s" == "%s"', k, v))
             end
             
-            if testTrue==true or (patcher.variables[k] == v) or (util.isEqual(patcher.variables[k],v)) then
+            if testTrue==true then
+            --if testTrue==true or (patcher.variables[k] == v) or (util.isEqual(patcher.variables[k],v)) then
             --if testTrue==true or (k == v) or (util.isEqual(k,v)) then
                 patcher["if"..indent] = true
                 printVerbose(" true")
             else
                 patcher["if"..indent] = false
-                printVerbose(" true")
+                printVerbose(" false")
                 
                 local nSkipped = 0
                 while true do
@@ -2222,9 +2228,10 @@ while true do
             printf("Creating IPS patch: %s",f)
             if not util.writeToFile(f, 0, patcher.makeIPS(patcher.originalFileData,patcher.newFileData)) then err("Could not write to file.") end
         elseif keyword=="file" then
+            if util.trim(data:lower())=="none" then data=nil end
             patcher.fileName = data
             file = data
-            printf("File: %s",patcher.fileName)
+            printf("File: %s",patcher.fileName or "(none)")
             --patcher.fileData=util.getFileContents(patcher.fileName)
         elseif keyword=="load" then
             patcher.load(data)
@@ -2233,8 +2240,9 @@ while true do
             --print("["..f.."]")
             patcher.save(f)
         elseif keyword=="outputfile" then
+            if util.trim(data:lower())=="none" then data=nil end
             patcher.outputFileName = data
-            printf("Output file: %s",patcher.outputFileName)
+            printf("Output file: %s",patcher.outputFileName or "(none)")
             --patcher.fileData=util.getFileContents(patcher.fileName)
         elseif keyword == "start" then
             --patcher.startAddress = tonumber(data, 16)
@@ -2436,9 +2444,13 @@ else
         -- If break is used, don't save.
         printf("done.")
     else
-        patcher.save()
-        -- Save if not in strict mode and quit or exit is used.
-        printf('Patching complete.  Output to file "%s"', patcher.outputFileName)
+        if patcher.outputFileName then
+            patcher.save()
+            -- Save if not in strict mode and quit or exit is used.
+            printf('Patching complete.  Output to file "%s"', patcher.outputFileName)
+        else
+            printf('Patching complete.', patcher.outputFileName)
+        end
     end
 end
 

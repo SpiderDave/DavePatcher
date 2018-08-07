@@ -6,6 +6,9 @@ include config.txt
 
 load %oldFile%
 
+// Don't create an output file.
+outputfile none
+
 // Offset by 0x10 for the iNES header
 offset 10
 
@@ -21,6 +24,116 @@ print ----------- Variables --------------
 list variables
 print ------------------------------------
 
+print
+print ------------------------------------
+print "if" block tests...
+print ------------------------------------
+print
+print ** Set up variables **
+print
+//test_undefined=(undefined)
+test_string_false=false
+test_string_true=true
+test_string_1=1
+test_string_0=0
+num test_num_1=1
+num test_num_0=0
+print
+print ** Start tests **
+print
+if test_undefined
+    print fail
+else
+    print success
+end if
+
+if test_undefined==false
+    print fail
+else
+    print success
+end if
+
+if test_string_false
+    print fail
+else
+    print success
+end if
+
+if test_string_false==false
+    print success
+else
+    print fail
+end if
+
+if test_string_true
+    print success
+else
+    print fail
+end if
+
+if test_string_true==false
+    print fail
+else
+    print success
+end if
+
+// 0 is considered false with an implied truth test
+if test_string_0
+    print fail
+else
+    print success
+end if
+
+// 0 is not directly equal to false in a comparison, even though it is false when an implied truth test is done.
+if test_string_0==false
+    print fail
+else
+    print success
+end if
+
+if test_string_1
+    print success
+else
+    print fail
+end if
+
+if test_string_1==false
+    print fail
+else
+    print success
+end if
+
+// 0 is considered false with an implied truth test
+if test_num_0
+    print fail
+else
+    print success
+end if
+
+// 0 is not directly equal to false in a comparison, even though it is false when an implied truth test is done.
+if test_num_0==false
+    print fail
+else
+    print success
+end if
+
+if test_num_1
+    print success
+else
+    print fail
+end if
+
+if test_num_1==false
+    print fail
+else
+    print success
+end if
+
+
+
+
+
+
+
 :end
-// We use break here so it doesn't automatically create an output file.
-break
+
