@@ -12,6 +12,9 @@ outputfile none
 // Offset by 0x10 for the iNES header
 offset 10
 
+textmap 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-x!.c 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f2021222328292bafcf
+textmap space 24
+
 // Test some automatic address stuff.  Note the value of special
 // variable "ADDRESS" after these operations.
 put 400 0505
@@ -36,11 +39,26 @@ test_string_false=false
 test_string_true=true
 test_string_1=1
 test_string_0=0
+test_string_empty=
 num test_num_1=1
 num test_num_0=0
 print
 print ** Start tests **
 print
+
+if test_string_empty
+    print fail
+else
+    print success
+end if
+
+if test_string_empty==false
+    print fail
+else
+    print success
+end if
+
+
 if test_undefined
     print fail
 else
@@ -128,10 +146,6 @@ if test_num_1==false
 else
     print success
 end if
-
-
-
-
 
 
 

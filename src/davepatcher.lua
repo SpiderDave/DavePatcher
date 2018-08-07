@@ -1475,7 +1475,7 @@ while true do
             local old=patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+len)
             old=bin2hex(old)
             
-            print(string.format("Hex data at 0x%08x: %s",address, old))
+            print(string.format("Data at 0x%08x: %s",address, old))
         elseif util.startsWith(line:lower(), "get text ") then
             local data=string.sub(line,10)
             local address = data:sub(1,(data:find(" ")))
@@ -1486,9 +1486,10 @@ while true do
             
             local old=patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+len)
             --old=bin2hex(old)
-            
-            print(string.format("Text data at 0x%08x: %s",address,mapText(old,true)))
+            local txt=mapText(old,true)
+            print(string.format("Text data at 0x%08x: %s",address, txt))
             patcher.variables["ADDRESS"] = string.format("%x",address + #old/2)
+            patcher.variables["RET"] = txt
         elseif keyword == "get" then
             local data=string.sub(line,5)
             --local address = util.split(data, " ",1)[1]
@@ -1503,7 +1504,7 @@ while true do
             local old=patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+len)
             old=bin2hex(old)
             
-            print(string.format("Hex data at 0x%08x: %s",address, util.limitString(old)))
+            print(string.format("Data at 0x%08x: %s",address, util.limitString(old)))
             patcher.variables["ADDRESS"] = string.format("%x",address + #old/2)
             patcher.variables["DATA"] = old
             patcher.variables["RET"] = old
@@ -2455,6 +2456,5 @@ else
 end
 
 printVerbose(string.format("\nelapsed time: %.2f\n", os.clock() - executionTime))
-
 
 quit()

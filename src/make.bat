@@ -14,6 +14,8 @@ copy /b love\love.exe+davepatcher.love package\davepatcher.exe
 copy love\*.dll package
 del davepatcher.love
 
+copy package\davepatcher.exe ..\
+
 goto theend
 
 :error
