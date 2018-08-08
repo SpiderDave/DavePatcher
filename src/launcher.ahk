@@ -1,5 +1,6 @@
 ﻿#NoTrayIcon
 #SingleInstance ignore
+SetWorkingDir %A_ScriptDir%
 
 /*
     To Do:
@@ -13,6 +14,7 @@
           + Better handling of empty or small list
           + Configurable size of list
         * Customize/override programs used for test button
+        * Customize/override programs used for edit patch button
         * About dialog: Donate button icon
 */
 
@@ -39,6 +41,9 @@ Gui, Add, Text, x134 y+18 w400 vRunStatus,
 Gui, Add, Button, x10 y10 w120 h30 vBUTTON1 gOpenPatch, Open patch file...
 Gui, Add, Button, x10 y+2 w120 h30 vBUTTON2 gRunPatch, Run patch file (F5)
 Gui, Add, Button, x10 y+2 w120 h30 vBUTTON3 gEditPatch, Edit patch file
+;Gui, Add, ddl, x+4 w120 vBUTTON6 gEditConfig, patch.txt|config.txt
+Gui, Add, Button, x+4 w80 h30 vEDITCONFIG gEditConfig, config.txt
+Gui, Add, Button, x+4 w80 h30 vEDITTILEMAPS gEditTilemaps, tilemaps.txt
 Gui, Add, Button, x10 y+2 w120 h30 vBUTTON4 gOpenPatchFolder, Open patch folder
 Gui, Add, Button, x10 y+2 w120 h30 vBUTTON5 gTestRom, Test
 
@@ -57,6 +62,8 @@ GuiControl, Disable, BUTTON4
 
 GuiControl, hide, Log
 GuiControl, hide, BUTTON5
+GuiControl, hide, EDITCONFIG
+GuiControl, hide, EDITTILEMAPS
 GuiControl, hide, RunStatus
 
 
@@ -228,7 +235,7 @@ NewPatch:
     }
     
     ;SetWorkingDir %A_ScriptDir%\backup
-    FileSelectFile, SelectedFile, 3,%backupFolder% , Open a file, All Files (*.nes`;*.gb`;*.sms)
+    FileSelectFile, SelectedFile, 3,%backupFolder%\ , Open a file, All Files (*.nes`;*.gb`;*.sms)
     if SelectedFile =
         return
     else
@@ -280,13 +287,15 @@ OpenPatch:
 {
 global patchFile
 SetWorkingDir %A_ScriptDir% 
-FileSelectFile, SelectedFile, 3,%A_ScriptDir% , Open a file, Text Documents (patch.txt;)
+FileSelectFile, SelectedFile, 3, %A_ScriptDir%\, Open a file, Text Documents (patch.txt;)
 if SelectedFile =
     ;MsgBox, The user didn't select anything.
     return
 else
     GuiControl, hide, Log
     GuiControl, hide, BUTTON5
+    GuiControl, hide, EDITCONFIG
+    GuiControl, hide, EDITTILEMAPS
     GuiControl, hide, RunStatus
     ;MsgBox, The user selected the following:`n%SelectedFile%
     
@@ -296,45 +305,12 @@ else
     SplitPath, patchFile,file, dir
     SetWorkingDir, %dir%
     
-    RegWrite, REG_SZ, HKEY_CURRENT_USER\Software\DavePatcher, last, %SelectedFile%
     
-    RegRead, Recent1, HKEY_CURRENT_USER\Software\DavePatcher, recent1
-    RegRead, Recent2, HKEY_CURRENT_USER\Software\DavePatcher, recent2
-    RegRead, Recent3, HKEY_CURRENT_USER\Software\DavePatcher, recent3
-    RegRead, Recent4, HKEY_CURRENT_USER\Software\DavePatcher, recent4
-    RegRead, Recent5, HKEY_CURRENT_USER\Software\DavePatcher, recent5
-    RegRead, Recent6, HKEY_CURRENT_USER\Software\DavePatcher, recent6
-    RegRead, Recent7, HKEY_CURRENT_USER\Software\DavePatcher, recent7
-    RegRead, Recent8, HKEY_CURRENT_USER\Software\DavePatcher, recent8
-    RegRead, Recent9, HKEY_CURRENT_USER\Software\DavePatcher, recent9
-    
-    RegWrite, REG_SZ, HKEY_CURRENT_USER\Software\DavePatcher, recent1, %SelectedFile%
-    RegWrite, REG_SZ, HKEY_CURRENT_USER\Software\DavePatcher, recent2, %Recent1%
-    RegWrite, REG_SZ, HKEY_CURRENT_USER\Software\DavePatcher, recent3, %Recent2%
-    RegWrite, REG_SZ, HKEY_CURRENT_USER\Software\DavePatcher, recent4, %Recent3%
-    RegWrite, REG_SZ, HKEY_CURRENT_USER\Software\DavePatcher, recent5, %Recent4%
-    RegWrite, REG_SZ, HKEY_CURRENT_USER\Software\DavePatcher, recent6, %Recent5%
-    RegWrite, REG_SZ, HKEY_CURRENT_USER\Software\DavePatcher, recent7, %Recent6%
-    RegWrite, REG_SZ, HKEY_CURRENT_USER\Software\DavePatcher, recent8, %Recent7%
-    RegWrite, REG_SZ, HKEY_CURRENT_USER\Software\DavePatcher, recent9, %Recent8%
-    
-    Menu, Recent, DeleteAll
-    Menu, Recent, Add, %SelectedFile%, RecentMenuHandler
-    Menu, Recent, Add, %Recent1%, RecentMenuHandler
-    Menu, Recent, Add, %Recent2%, RecentMenuHandler
-    Menu, Recent, Add, %Recent3%, RecentMenuHandler
-    Menu, Recent, Add, %Recent4%, RecentMenuHandler
-    Menu, Recent, Add, %Recent5%, RecentMenuHandler
-    Menu, Recent, Add, %Recent6%, RecentMenuHandler
-    Menu, Recent, Add, %Recent7%, RecentMenuHandler
-    Menu, Recent, Add, %Recent8%, RecentMenuHandler
-    Menu, Recent, Add, %Recent9%, RecentMenuHandler
+    RefreshRecentFiles(SelectedFile)
     
     GuiControl, Enable, BUTTON2
     GuiControl, Enable, BUTTON3
     GuiControl, Enable, BUTTON4
-    ;Run, notepad.exe
-    ;Run, cmd
 return
 }
 
@@ -363,6 +339,18 @@ RefreshLog(ShowSuccess=true)
     FileRead, Contents, %A_ScriptDir%\autolog.txt
     
     FoundPos := RegExMatch(Contents, "(Patching complete\.)  Output to file ""(.*?\..*?)""", m, StartingPosition := 1)
+    ;RegExMatch(Contents, "msO)#launcher\.(.*?)=(.*?)$" , launcherData, StartingPosition := 1)
+    
+    ;MsgBox % getLauncherDirective(Contents, "config")
+    ;MsgBox % getLauncherDirective(Contents, "outputfile")
+    
+    if getLauncherDirective(Contents, "config")
+        GuiControl, show, EDITCONFIG
+    if getLauncherDirective(Contents, "tilemaps")
+        GuiControl, show, EDITTILEMAPS
+    
+    ; Strip all launcher directives, and new lines following them
+    Contents := RegExReplace(Contents, "m)#launcher\..*?=.*?$[\r\n]+" , Replacement := "",,, StartingPosition := 1)
     
     if GetOption("Abridged Output")
         Contents := "Showing last 15 lines:`n...`n"+Tail(15, Contents)
@@ -376,6 +364,8 @@ RefreshLog(ShowSuccess=true)
     if m2 =
     {
         GuiControl, hide, BUTTON5
+        GuiControl, hide, EDITCONFIG
+        GuiControl, hide, EDITTILEMAPS
         testFile=
 ;            if m1 =
 ;                success=false
@@ -409,6 +399,32 @@ RefreshLog(ShowSuccess=true)
 }
 return
 
+EditConfig:
+{
+global patchFile
+
+SplitPath,patchFile,, dir
+SetWorkingDir, %dir%
+
+;target = notepad.exe config.txt
+target = config.txt
+RoA("config.txt", target)
+
+return
+}
+
+EditTilemaps:
+{
+global patchFile
+
+SplitPath,patchFile,, dir
+SetWorkingDir, %dir%
+
+target = tilemaps.txt
+RoA("tilemaps.txt", target)
+
+return
+}
 
 EditPatch:
 {
@@ -418,7 +434,8 @@ SplitPath, patchFile,file, dir
 SetWorkingDir, %dir%
 
 ;Run, notepad.exe %file%
-target = notepad.exe %file%
+;target = notepad.exe %file%
+target = %file%
 RoA(file, target)
 ;IfWinExist, %file%
 ;    WinActivate, %file%
@@ -466,6 +483,8 @@ Open(f)
 {
     GuiControl, hide, Log
     GuiControl, hide, BUTTON5
+    GuiControl, hide, EDITCONFIG
+    GuiControl, hide, EDITTILEMAPS
     GuiControl, hide, RunStatus
     
     patchFile = %f%
@@ -553,6 +572,28 @@ RoA(InTitle, Target)
         WinActivate, %InTitle%
     else
         Run, %Target%
+}
+
+getLauncherDirective(s,n)
+{
+    RegExMatch(s, "ms)#launcher\." . n . "=(.*?)$" , m, StartingPosition := 1)
+    return m1
+}
+
+
+RegExMatchLoop(Haystack, NeedleRegEx, StartingPos := 1) {
+  match_array := []
+  Loop
+  {
+    found_pos := RegExMatch(Haystack, NeedleRegEx, output_var, StartingPos)
+    If (output_var) {
+      match_array.Push(output_var)
+      Haystack := SubStr(Haystack, found_pos + StrLen(output_var))
+    } Else {
+      Break
+    }
+  }
+  Return match_array
 }
 
 GuiClose:

@@ -110,6 +110,12 @@ function patcher.setPalette(p)
     patcher.variables["PALETTE"] = string.format("%02x%02x%02x%02x", patcher.colors[0],patcher.colors[1],patcher.colors[2],patcher.colors[3])
 end
 
+-- This will print out directives for the launcher to use
+function patcher.addLauncherDirective(k,v)
+    if patcher.launcher then
+        print(string.format("#launcher.%s=%s",k,v))
+    end
+end
 
 function patcher.getHeader(str)
     local str = str or patcher.fileData:sub(1,16)
@@ -1087,7 +1093,11 @@ if arg[1]=="-launcher" then
     patcher.launcher = true
 end
 
-if arg[1]=="-autolog" or arg[1]=="-launcher" then
+if arg[1]=="-launcher" then
+    patcher.launcher=true
+end
+
+if arg[1]=="-autolog" or patcher.launcher then
     patcher.autolog=true
     print=function(txt)
         patcher.textOut=(patcher.textOut or "")..txt.."\n"
@@ -1275,8 +1285,13 @@ while true do
             local path = love.filesystem.getWorkingDirectory( )
             --print("include path: ",path)
             
-            
             local f = util.trim(data)
+            if f=="config.txt" then
+                patcher.addLauncherDirective("config", f)
+            end
+            if f=="tilemaps.txt" then
+                patcher.addLauncherDirective("tilemaps", f)
+            end
             if util.startsWith(f, "/") then
                 f = patcher.path..f
             else
@@ -2456,5 +2471,7 @@ else
 end
 
 printVerbose(string.format("\nelapsed time: %.2f\n", os.clock() - executionTime))
+
+patcher.addLauncherDirective("outputfile", patcher.outputFileName)
 
 quit()
