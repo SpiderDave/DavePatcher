@@ -1,6 +1,7 @@
 @echo off
 setlocal
 set _7z=C:\Program Files\7-Zip\7z.exe
+set ahk=J:\Program Files\AutoHotkey\
 set stage=beta
 
 rem create lua file for automatic versioning
@@ -16,9 +17,15 @@ del davepatcher.love
 
 copy package\davepatcher.exe ..\
 
+echo Compiling launcher...
+"%ahk%\Compiler\ahk2exe.exe" /in launcher.ahk /out package\launcher.exe /icon icon.ico /mpress 1
+
+copy package\launcher.exe ..\
+
 goto theend
 
 :error
+rem **NOTE** This isn't used atm, batch file needs error handling.
 echo.
 echo Did NOT complete successfully.
 echo.%errormessage%
