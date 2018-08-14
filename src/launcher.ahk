@@ -207,6 +207,8 @@ return
 NewPatch:
 {
     InputBox, UserInput, New Script, Please enter a folder name for the script., ,
+    if UserInput =
+        return
     folderName := UserInput
     folder = %A_ScriptDir%\%folderName%
     if FileExist(folder) {
@@ -279,7 +281,6 @@ NewPatch:
     
     open(patchFile)
     RefreshRecentFiles(patchFile)
-    
 return
 }
 
@@ -344,6 +345,9 @@ RefreshLog(ShowSuccess=true)
     ;MsgBox % getLauncherDirective(Contents, "config")
     ;MsgBox % getLauncherDirective(Contents, "outputfile")
     
+    GuiControl, hide, EDITCONFIG
+    GuiControl, hide, EDITTILEMAPS
+
     if getLauncherDirective(Contents, "config")
         GuiControl, show, EDITCONFIG
     if getLauncherDirective(Contents, "tilemaps")
@@ -453,7 +457,7 @@ global testFile
 SplitPath, patchFile,file, dir
 SetWorkingDir, %dir%
 
-Run, %testFile%
+Run, "%testFile%"
 
 ;RegRead, FceuxCommand, HKEY_CURRENT_USER\Software\Classes\Applications\fceux.exe\shell\open\command
 ;FceuxCommand := RegExReplace(FceuxCommand, " ""\%1""", "")
@@ -473,7 +477,7 @@ global patchFile
 SplitPath, patchFile,file, dir
 SetWorkingDir, %dir%
 
-Run, explore %dir%
+Run, explore "%dir%"
 
 return
 }
@@ -571,7 +575,11 @@ RoA(InTitle, Target)
     IfWinExist, %InTitle%
         WinActivate, %InTitle%
     else
-        Run, %Target%
+        Run, "%Target%",,UseErrorLevel
+    
+    if ErrorLevel=ERROR
+        MsgBox "%Target%" not found.
+        
 }
 
 getLauncherDirective(s,n)

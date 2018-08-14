@@ -1288,8 +1288,7 @@ while true do
             local f = util.trim(data)
             if f=="config.txt" then
                 patcher.addLauncherDirective("config", f)
-            end
-            if f=="tilemaps.txt" then
+            elseif f=="tilemaps.txt" then
                 patcher.addLauncherDirective("tilemaps", f)
             end
             if util.startsWith(f, "/") then
@@ -2078,7 +2077,7 @@ while true do
             old=bin2hex(old)
             --printf("Setting bytes: 0x%08x: %s --> %s",address,old, newData)
             patcher.write(address+patcher.offset,hex2bin(newData))
-            printf("Setting bytes: 0x%08x: %s --> %s",address, patcher.variables["OLDDATA"], patcher.variables["NEWDATA"])
+            printf("Setting bytes: 0x%08x: %s --> %s",address, util.limitString(patcher.variables["OLDDATA"]), util.limitString(patcher.variables["NEWDATA"]))
             
             patcher.variables["ADDRESS"] = string.format("%x",address + #newData/2)
         elseif keyword == "fill" then
