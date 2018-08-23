@@ -47,6 +47,7 @@ local executionTime = os.clock()
 
 table.unpack = table.unpack or unpack
 
+require("include.Tserial")
 local util = require("include.util")
 util.deque = require("include.deque")
 local graphics = require("include.graphics")
@@ -92,6 +93,7 @@ local patcher = {
     variables = {
         DEFTYPE="str",
         LOGFILE="log.txt",
+        BITOPER="NORMAL",
     },
     autoRefresh = false,
     outputFileName = "output.nes",
@@ -101,6 +103,7 @@ local patcher = {
 }
 
 patcher.path = love.filesystem.getSourceBaseDirectory()
+patcher.variableStack = util.deque:new()
 
 function patcher.setPalette(p)
     if #p~=8 then return false end
@@ -157,6 +160,7 @@ function patcher.load(f)
     patcher.fileData = util.getFileContents(patcher.fileName)
     patcher.originalFileData = patcher.fileData
     patcher.newFileData = patcher.fileData
+    patcher.variables.FILESIZE = #patcher.fileData
     pcall(function()
         patcher.header = patcher.getHeader()
     end)
@@ -1525,12 +1529,17 @@ while true do
         elseif util.startsWith(line, "find text ") then
             local txt=string.sub(line,11)
             address=0
+            local firstFound
             print(string.format("Find text: %s",txt))
             for i=1,10 do
                 address = patcher.fileData:find(mapText(txt),address+1+patcher.offset, true)
                 if address then
                     if address>patcher.startAddress+patcher.offset then
                         print(string.format("    %s Found at 0x%08x",txt,address-1-patcher.offset))
+                        if not firstFound then
+                            firstFound=address-1-patcher.offset
+                        end
+                        patcher.variables["ADDRESS"]=address-1-patcher.offset+#txt
                     end
                 else
                     if i==1 then
@@ -1539,12 +1548,13 @@ while true do
                     break
                 end
             end
+            patcher.variables["RET"]=firstFound
         elseif keyword == "bitop" then
             if data then data = data:upper() end
             if bit[data] then
                 patcher.variables["BITOPER"] = data
             else
-                patcher.variables["BITOPER"] = nil
+                patcher.variables["BITOPER"] = "NORMAL"
             end
         elseif keyword == "address" then
             if data then
@@ -1701,6 +1711,18 @@ while true do
             patcher.variables['TILEMAPX'] = oldTilemapX
             patcher.variables['TILEMAPY'] = oldTilemapY
             
+        elseif keyword=="push" then
+            if data == "variables" then
+                patcher.variables.OFFSET = patcher.variables.OFFSET or patcher.offset
+                patcher.variableStack:push(util.serialize(patcher.variables))
+                print("pushing variables")
+            end
+        elseif keyword=="pop" then
+            if data == "variables" then
+                patcher.variables = util.unserialize(patcher.variableStack:pop())
+                patcher.offset = patcher.variables.OFFSET or patcher.offset
+                print("popping variables")
+            end
         elseif util.startsWith(line, "import ") then
 --            if not gd then
 --                err("could not use import command because gd did not load.")
@@ -2223,6 +2245,8 @@ while true do
             else
                 patcher.fileData = patcher.newFileData
             end
+        elseif keyword=="revert" then
+            patcher.newFileData = patcher.fileData
         elseif line=="header" then
             local header = patcher.getHeader()
             print(string.format("\niNES header data:\nid: %s\nPRG ROM: %02x x 4000\nCHR ROM: %02x x 2000\n",header.id,header.prg_rom_size,header.chr_rom_size))
@@ -2265,6 +2289,7 @@ while true do
             printf("Setting Start Address: %04x", patcher.startAddress)
         elseif keyword == "offset" then
             patcher.offset = tonumber(data, 16)
+            patcher.variables.OFFSET = patcher.offset
             print("Setting offset: "..data)
         elseif keyword == "palette" then
             data = util.trim(data)

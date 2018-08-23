@@ -194,6 +194,12 @@ function util.identifier(id)
     return
 end
 
+function util.getFileSize(file)
+    local current = file:seek()      -- get current position
+    local size = file:seek("end")    -- get file size
+    file:seek("set", current)        -- restore position
+    return size
+end
 
 function util.getFileContents(path)
     local file = io.open(path,"rb")
@@ -218,5 +224,11 @@ function util.rawToNumber(d)
     return v
 end
 
+util.serialize = function(t)
+    return Tserial.pack(t)
+end
+util.unserialize = function(s)
+    return Tserial.unpack(s)
+end
 
 return util

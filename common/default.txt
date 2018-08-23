@@ -1,0 +1,39 @@
+// This is some stuff meant to be a base for every script.
+
+// Default palette
+palette 0f0c1c3c
+
+// Interactive mode (needs work)
+start function interactive
+    print
+    help
+    start loop
+        getinput > 
+        if %INPUT% == break
+            print
+            break loop
+        else
+            %INPUT%
+        end if
+    end loop
+end function
+
+
+// Exports each CHR bank seperately (export_1.png, export_2.png etc)
+start function exportCHR
+    address %CHRSTART%
+    start loop %CHRCOUNT%
+        print %ADDRESS% / export_%INDEX%.png
+        export * 200 export_%INDEX%.png
+    end loop
+end function
+
+// Add a battery to header
+start function addBattery
+    print Adding SRAM (battery) to header...
+    push variables
+    offset 0
+    bitop or
+    put 6 02
+    pop variables
+end function
