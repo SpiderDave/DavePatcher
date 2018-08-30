@@ -1414,6 +1414,9 @@ while true do
             end
             printf("")
         --elseif startsWith(line:lower(), "replace hex ") then
+        elseif keyword == "delim" then
+            patcher.variables.DELIM = data or " "
+            printf('Setting delimiter to "%s"', patcher.variables.DELIM)
         elseif keyword == "replace" then
             local limit = 50
             if util.split(util.ltrim(data), " ",1)[1]=="hex" then
@@ -1425,18 +1428,40 @@ while true do
             end
             data = util.ltrim(data)
             
+            local text=false
+            local findValue, replaceValue
+            local findText, replaceText
+            if util.split(data, " ")[1]=="text" then
+                data = util.split(data, " ", 1)[2]
+                text=true
+            end
+            
             --local data=string.sub(line,13)
             local address=0
-            local findValue = util.split(data," ")[1]
-            local replaceValue = util.split(data," ")[2]
+            
+            if text then
+                --print((patcher.variables.DELIM or "?").."********")
+                findText = util.split(data, patcher.variables.DELIM or " ")[1]
+                replaceText = util.split(data, patcher.variables.DELIM or " ")[2]
+
+                findValue = bin2hex(mapText(findText))
+                replaceValue = bin2hex(mapText(replaceText))
+            else
+                findValue = util.split(data, patcher.variables.DELIM or " ")[1]
+                replaceValue = util.split(data, patcher.variables.DELIM or " ")[2]
+            end
             
             local nResults = 0
             
-            if util.split(data, " ")[3] then
+            if util.split(data, patcher.variables.DELIM or " ")[3] then
                 limit = tonumber(util.split(data, " ")[3],16)
             end
             
-            print(string.format("Find and replace hex: %s --> %s (limit %s)",findValue, replaceValue, limit))
+            if text then
+                print(string.format("Find and replace text: %s --> %s (limit %s)",findText, replaceText, limit))
+            else
+                print(string.format("Find and replace hex: %s --> %s (limit %s)",findValue, replaceValue, limit))
+            end
             patcher.results.clear()
             
             while true do
