@@ -50,6 +50,9 @@ table.unpack = table.unpack or unpack
 require("include.Tserial")
 local util = require("include.util")
 util.deque = require("include.deque")
+util.md5=require("include.md5")
+
+
 local graphics = require("include.graphics")
 
 require "os"
@@ -1554,11 +1557,14 @@ while true do
         elseif util.startsWith(line, "find text ") then
             local txt=string.sub(line,11)
             address=0
+            local startAddress=0
             local firstFound
             print(string.format("Find text: %s",txt))
             for i=1,10 do
-                address = patcher.fileData:find(mapText(txt),address+1+patcher.offset, true)
+                
+                address = patcher.fileData:find(mapText(txt),startAddress+1+patcher.offset, true)
                 if address then
+                    startAddress = address-#txt
                     if address>patcher.startAddress+patcher.offset then
                         print(string.format("    %s Found at 0x%08x",txt,address-1-patcher.offset))
                         if not firstFound then
@@ -2141,6 +2147,18 @@ while true do
             patcher.write(address+patcher.offset,hex2bin(newData))
             printVerbose("Fill data: 0x%08x: %s",address, patcher.variables["NEWDATA"])
             patcher.variables["ADDRESS"] = string.format("%x",address + #newData/2)
+        elseif keyword == "md5" then
+            local md5
+            if data then
+                -- md5 of given file
+                md5=util.md5.sumhexa(util.getFileContents(data))
+                printf("MD5 (%s): %s",data, md5)
+            else
+                -- md5 of current file data
+                md5=util.md5.sumhexa(patcher.fileData)
+                printf("MD5 (Current file data): %s", md5)
+            end
+            patcher.variables["RET"] = md5
         elseif keyword == "gg" then
             local gg=data:upper()
             gg=util.split(gg," ",1)[1] -- Let's allow stuff after the code for descriptions, etc.  figure out a better comment system later.
