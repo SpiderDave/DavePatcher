@@ -39,6 +39,8 @@
 --   * better include paths
 --     + search from a list
 --   * fix goto statements and labels inside functions
+--   * add more RET values
+--   * use delimiter everywhere instead of just space
 
 -- Notes:
 --   * Keywords starting with _ are experimental or unfinished
@@ -97,6 +99,7 @@ local patcher = {
         DEFTYPE="str",
         LOGFILE="log.txt",
         BITOPER="NORMAL",
+        REPLACELIMIT = 50,
     },
     autoRefresh = false,
     outputFileName = "output.nes",
@@ -104,6 +107,18 @@ local patcher = {
     breakLoop=false,
     tbl={},
 }
+
+
+patcher.print = function(txt)
+    if patcher.silent then return end
+    if patcher.autolog== true or patcher.launcher then
+        patcher.textOut=(patcher.textOut or "")..txt.."\n"
+    else
+        print(txt)
+    end
+end
+
+print=patcher.print
 
 patcher.path = love.filesystem.getSourceBaseDirectory()
 patcher.variableStack = util.deque:new()
@@ -594,6 +609,11 @@ function patcher.replaceVariables(line)
     local f = function(k)
         return function()
             patcher.variables["RANDOMBYTE"]=rng:random(0,255)
+            if patcher.fileData then
+                patcher.variables["RANDOMADDRESS"] = util.random(1,#patcher.fileData-patcher.offset)
+            else
+                patcher.variables["RANDOMADDRESS"] = 0
+            end
             v = patcher.variables[k]
             if type(v) == "number" then
                 v = string.format("%x",v)
@@ -618,11 +638,45 @@ function patcher.replaceVariables(line)
     return line
 end
 
+function patch.parseFunctionString(s)
+    -- no (, not a function
+    if not string.find(s,"%(") then return end
+    
+    -- space comes before (, not a function
+    if string.match(s, " ") and (#util.split(s, "(",1)[1] > #util.split(s, " ",1)[1]) then
+        return
+    end
+    -- == comes before (, not a function
+    if string.match(s, "==") and (#util.split(s, "(",1)[1] > #util.split(s, "==",1)[1]) then
+        return
+    end
+    
+    
+    local fname=util.split(s, "(",1)[1]
+    local data=util.split(s, "==",1)[2]
+    
+    local param = util.split(s, "(",1)[2] or ""
+    param = util.split(param, "==",1)[1]
+    param = param:sub(1, -2) -- remove last character
+    --printf("fname=%s, data=%s, param=%s",fname,data,param)
+    return fname,param,data
+end
+
+
 function patch.parseLine(line)
     line = patcher.replaceVariables(line)
     
     local keyword, data
     keyword, data = unpack(util.split(line," ",1))
+    
+    
+    -- if a ( comes before a space, then assume it's a function, so we'll make the whole line the keyword
+    if (#util.split(line,"(",1)[1]>1) and (#util.split(line,"(",1)[1]<#keyword) then
+        keyword=line
+        data=""
+    end
+    
+    
     local keywordOriginal=keyword
     keyword=keyword:lower()
 
@@ -1106,9 +1160,9 @@ end
 
 if arg[1]=="-autolog" or patcher.launcher then
     patcher.autolog=true
-    print=function(txt)
-        patcher.textOut=(patcher.textOut or "")..txt.."\n"
-    end
+--    print=function(txt)
+--        patcher.textOut=(patcher.textOut or "")..txt.."\n"
+--    end
     table.remove(arg,1)
 end
 
@@ -1267,16 +1321,30 @@ while true do
             print(string.format("Analyzing ASM data:\n[%s]",hexData))
             print(asm.print(hexData))
         elseif keyword == "print" then
+            --local oldsilent = patcher.silent
+            --patcher.silent=false
             print(data or "")
+            --patcher.silent = oldsilent
         elseif keyword == "choose" then
             local choice = util.split(data," ")
             choice = choice[rng:random(1, #choice)]
             patcher.variables['CHOICE'] = choice
+            patcher.variables['RET'] = choice
+        elseif keyword == "split" then
+            for i,v in ipairs(util.split(data," ")) do
+                patcher.variables['SPLIT'..i] = v
+            end
         elseif keyword == "_random" then
             local r = rng:random(0, 255)
             patcher.variables['RET'] = r
         elseif util.startsWith(line, "//") then
             -- comment
+        elseif keyword == "silent" then
+            local err
+            patcher[keyword], err = util.switch(data, true)
+            if err then
+                warning('Invalid switch value for %s: "%s"',keyword, data)
+            end
         elseif keyword == "verbose" or keyword == "strict" or keyword == "annotations" then
             local err
             patcher[keyword], err = util.switch(data, true)
@@ -1421,78 +1489,85 @@ while true do
             patcher.variables.DELIM = data or " "
             printf('Setting delimiter to "%s"', patcher.variables.DELIM)
         elseif keyword == "replace" then
-            local limit = 50
+            local limit = patcher.variables["REPLACELIMIT"]
+            
             if util.split(util.ltrim(data), " ",1)[1]=="hex" then
                 data = util.split(util.ltrim(data), " ",1)[2]
                 warning('depreciated keyword "replace hex". use "replace" instead')
-            elseif util.split(util.ltrim(data), " ",1)[1]=="limit" then
+            end
+            
+            if util.split(util.ltrim(data), " ",1)[1]=="limit" then
                 --limit = util.trim(util.split(util.ltrim(data), " ")[2])
                 --data = util.split(util.ltrim(data), " ",2)[3]
-            end
-            data = util.ltrim(data)
-            
-            local text=false
-            local findValue, replaceValue
-            local findText, replaceText
-            if util.split(data, " ")[1]=="text" then
-                data = util.split(data, " ", 1)[2]
-                text=true
-            end
-            
-            --local data=string.sub(line,13)
-            local address=0
-            
-            if text then
-                --print((patcher.variables.DELIM or "?").."********")
-                findText = util.split(data, patcher.variables.DELIM or " ")[1]
-                replaceText = util.split(data, patcher.variables.DELIM or " ")[2]
-
-                findValue = bin2hex(mapText(findText))
-                replaceValue = bin2hex(mapText(replaceText))
+                patcher.variables["REPLACELIMIT"] = util.toNumber(util.split(util.ltrim(data), " ",1)[2])
+                printf('Setting replace limit: %s',patcher.variables["REPLACELIMIT"])
             else
-                findValue = util.split(data, patcher.variables.DELIM or " ")[1]
-                replaceValue = util.split(data, patcher.variables.DELIM or " ")[2]
-            end
-            
-            local nResults = 0
-            
-            if util.split(data, patcher.variables.DELIM or " ")[3] then
-                limit = tonumber(util.split(data, " ")[3],16)
-            end
-            
-            if text then
-                print(string.format("Find and replace text: %s --> %s (limit %s)",findText, replaceText, limit))
-            else
-                print(string.format("Find and replace hex: %s --> %s (limit %s)",findValue, replaceValue, limit))
-            end
-            patcher.results.clear()
-            
-            while true do
-            --for i=1,50 do
-                address = patcher.fileData:find(hex2bin(findValue),address+1+patcher.offset, true)
-                if (address or 0) > #patcher.fileData-1 then
-                    patcher.variables["ADDRESS"] = 0
-                    break
+                data = util.ltrim(data)
+                
+                local text=false
+                local findValue, replaceValue
+                local findText, replaceText
+                if util.split(data, " ")[1]=="text" then
+                    data = util.split(data, " ", 1)[2]
+                    text=true
                 end
+                
+                --local data=string.sub(line,13)
+                local address=0
+                
+                if text then
+                    --print((patcher.variables.DELIM or "?").."********")
+                    findText = util.split(data, patcher.variables.DELIM or " ")[1]
+                    replaceText = util.split(data, patcher.variables.DELIM or " ")[2]
 
-                if address then
-                    if address>patcher.startAddress+patcher.offset then
-                        print(string.format("    %s Found at 0x%08x, replacing with %s",findValue,address-1-patcher.offset,replaceValue))
-                        patcher.write(address-1,hex2bin(replaceValue))
-                        patcher.results[#patcher.results+1]={address=address-1-patcher.offset}
-                        nResults = nResults + 1
-                        if nResults >= limit then break end
-                    end
+                    findValue = bin2hex(mapText(findText))
+                    replaceValue = bin2hex(mapText(replaceText))
                 else
-                    break
+                    findValue = util.split(data, patcher.variables.DELIM or " ")[1]
+                    replaceValue = util.split(data, patcher.variables.DELIM or " ")[2]
                 end
-            end
-            patcher.results.index = 1
-            if #patcher.results > 0 then
-                patcher.lastFound = patcher.results[1].address
-                patcher.variables["ADDRESS"] = patcher.results[#patcher.results].address+1
-            else
-                patcher.lastFound = nil
+                
+                local nResults = 0
+                
+                if util.split(data, patcher.variables.DELIM or " ")[3] then
+                    limit = tonumber(util.split(data, " ")[3],16)
+                end
+                
+                if text then
+                    print(string.format("Find and replace text: %s --> %s (limit %s)",findText, replaceText, limit))
+                else
+                    print(string.format("Find and replace hex: %s --> %s (limit %s)",findValue, replaceValue, limit))
+                end
+                patcher.results.clear()
+                
+                while true do
+                --for i=1,50 do
+                    address = patcher.fileData:find(hex2bin(findValue),address+1+patcher.offset, true)
+                    if (address or 0) > #patcher.fileData-1 then
+                        patcher.variables["ADDRESS"] = 0
+                        break
+                    end
+
+                    if address then
+                        if address>patcher.startAddress+patcher.offset then
+                            print(string.format("    %s Found at 0x%08x, replacing with %s",findValue,address-1-patcher.offset,replaceValue))
+                            patcher.write(address-1,hex2bin(replaceValue))
+                            patcher.results[#patcher.results+1]={address=address-1-patcher.offset}
+                            nResults = nResults + 1
+                            if nResults >= limit then break end
+                        end
+                    else
+                        break
+                    end
+                end
+                patcher.results.index = 1
+                if #patcher.results > 0 then
+                    patcher.lastFound = patcher.results[1].address
+                    patcher.variables["ADDRESS"] = patcher.results[#patcher.results].address+1
+                else
+                    patcher.lastFound = nil
+                end
+
             end
         elseif util.startsWith(line:lower(), "get asm ") then
             local data=string.sub(line,9)
@@ -1591,6 +1666,15 @@ while true do
             if data then
                 patcher.variables["ADDRESS"] = data
             end
+        elseif keyword == "exist" then
+            if util.fileExists(data) then
+                patcher.variables["RET"] = 1
+                printf('File "%s" exists.', data)
+            else
+                patcher.variables["RET"] = 0
+                printf('File "%s" does not exist.', data)
+            end
+            
         elseif keyword == "find" then
             if util.split(util.ltrim(data), " ",1)[1]=="hex" then
                 data = util.split(util.ltrim(data), " ",1)[2]
@@ -1759,14 +1843,21 @@ while true do
 --                err("could not use import command because gd did not load.")
 --            end
             local dummy, address,len,fileName=unpack(util.split(line," ",3))
-            address=tonumber(address,16)
+            --address=tonumber(address,16)
+            address = util.toAddress(address)
             len=tonumber(len,16)*16
             
             print(string.format("importing tile data at 0x%08x",address))
             local tileData = imageToTile(len, fileName)
             
+            patcher.variables["ADDRESS"] = string.format("%x",address + len)
+            
             patcher.write(address+patcher.offset,tileData)
-
+        elseif keyword == "format" then
+            local fstring = util.split(data," ",1)[1]
+            local dstring = util.split(data," ",1)[2]
+            patcher.variables.RET = string.format(fstring, patcher.variables[dstring] or dstring)
+            --print(patcher.variables.RET)
         elseif keyword == "log" then
             local f = patcher.variables.LOGFILE
             if not util.logToFile(f, data) then err("Could not write to file.") end
@@ -1869,15 +1960,111 @@ while true do
                 
                 if util.startsWith(line, "end tbl") then break end
             end
-        elseif util.startsWith(line, "start function") then
-            local n = util.trim(util.split(data, " ", 1)[2])
-            if (not n) or n=="" then
+        elseif keyword=="expression" then
+            local calc= function(e)
+                e="("..e..")"
+                print("e="..e)
+                local operations = {
+                    ["*"]= function(x,y) return x*y end,
+                    ["/"]= function(x,y) return x/y end,
+                    ["+"]= function(x,y) return x+y end,
+                    ["-"]= function(x,y) return x-y end,
+                }
+                local calc3 = function(e, op)
+                    local m= e:match("(%w+)[%"..op.."]%w+")
+                    local m2= e:match("%w+[%"..op.."](%w+)")
+                    local o= e:match("%w+([%"..op.."])%w+")
+                    
+                    --print(m..op..m2)
+                    if m and m2 then
+                        local f = operations[op]
+                        return string.format("%x", f(util.toNumber(m),util.toNumber(m2)))
+                    else
+                        return e
+                    end
+                end
+
+                local calc2 = function(e)
+                    local m = e:match("^.[%w%*%-%+%/]-$")
+                    if m then
+                        --print("  matched:"..m)
+                        for _,op in ipairs{"*","/","+","-"} do
+                            for _=1,15 do
+                                local m= e:match("%w+[%"..op.."]%w+")
+                                if m then
+                                    --print("    matched:"..m)
+                                    e=e:gsub("(%w+[%"..op.."]%w+)", calc3(m, op))
+                                end
+                            end
+                        end
+                    end
+                    return e
+                end
+
+                for _=1,15 do
+                    local m = e:match("%((.[^%(%)]-)%)")
+                    if m then
+                        --print("match:"..m)
+                        e=e:gsub("%((.[^%(%)]-)%)", "("..calc2(m)..")")
+                        print("e="..e)
+                    end
+
+
+                    local m = e:match("%((%w+)%)")
+                    if m then
+                        --print("match():"..m)
+                        e=e:gsub("%((%w+)%)", m)
+                        --print("e="..e)
+                        print("e="..e)
+                    end
+                    
+                end
+                return e
+            end
+            
+            local e=data
+            print("expression:"..e)
+            e=calc(e)
+            print("result:"..e)
+            patcher.variables.RET = util.toNumber(e)
+        elseif util.startsWith(line, "start function") or keyword=="function" then
+            if keyword=="function" then
+                --pass
+            else
+                data = util.split(data, " ", 1)[2]
+            end
+            
+            local n = util.trim(data)
+
+            if not n then
+                err("Missing function name.")
+            end
+            
+            local args
+            
+            if n:find("%(") and n:find("%)") then
+                args = util.split(n, "(")[2]
+                args = args:sub(1, -2) -- remove last character
+                if util.trim(args)=="" then args=nil end
+                n = util.split(n, "(")[1]
+            end
+            
+            if n=="" then
                 err("Missing function name.")
             elseif n:find(" ") then
                 err('Invalid function name "%s"',n)
             end
-            local n = util.split(data, " ", 1)[2]
+            
+            
             patch.f[n]={}
+            
+            if args then
+                patch.f[n][#patch.f[n]+1]="split %PARAM%"
+                for i,v in ipairs(util.split(args," ")) do
+                    patch.f[n][#patch.f[n]+1]=v.."=".."%SPLIT"..i.."%"
+                end
+            end
+            
             while true do
                 local line, opt = patch.readLine(false)
                 if util.startsWith(line, "end function") then break end
@@ -1888,10 +2075,14 @@ while true do
             end
             local printVerbose=printf
             printVerbose("Creating function %s",n)
-        elseif keyword=="run" or util.endsWith(keyword, "()") then
+        --elseif keyword=="run" or util.endsWith(keyword, "()") then
+        elseif keyword=="run" or util.endsWith(keyword, ")") then
             local fName = data
-            if util.endsWith(keyword, "()") then
+            if util.endsWith(keyword, ")") then
                 fName = util.split(keywordOriginal, "(", 1)[1]
+                local param = util.split(keywordOriginal, "(", 1)[2]
+                param = param:sub(1, -2) -- remove last character
+                patcher.variables.PARAM = param
             end
             
             if not patch.f[fName] then
@@ -1943,10 +2134,46 @@ while true do
             k,v = util.trim(k), util.trim(v)
             patcher.variables[k] = util.toNumber(v, 10)
             printf('Variable: %s = 0x%x (%s)', k, patcher.variables[k], patcher.variables[k])
+        --elseif keyword == "if" and util.endsWith(data, ")") then
+        elseif keyword=="if" and patch.parseFunctionString(data) then
+            local fName,param,data = patch.parseFunctionString(data)
+            
+--            local fName = util.split(data, "(", 1)[1]
+--            local param = util.split(data, "(", 1)[2]
+--            param = param:sub(1, -2) -- remove last character
+            
+            patcher.variables.PARAM = param
+            
+            if not patch.f[fName] then
+                err('Function "%s()" does not exist.',fName)
+            end
+            
+            local i = patch.index
+            local lines = patch.f[fName]
+            
+            for k,v in pairs(lines) do
+              table.insert(patch.lines, i, string.rep(" ",indent)..v)
+              i=i+1
+            end
+            
+            -- Defer fillVar to the end of the function
+            if fillVar then
+                table.insert(patch.lines, i, string.rep(" ",indent).."-->"..fillVar)
+                fillVar = nil
+            end
+            
+            -- We add an if block, replacing the original, but use the return value of the function as a test.
+            if data then
+                table.insert(patch.lines, i, string.rep(" ",indent).."if RET=="..data)
+            else
+                table.insert(patch.lines, i, string.rep(" ",indent).."if RET")
+            end
+            
         elseif keyword == "if" then
             --printf("[%s] indent=%s",keyword, indent)
             
             local k,v = table.unpack(util.split(data, "=="))
+            
             --printVerbose('Variable debug: k="%s" v="%s" v[k]=%s', k,v, patcher.variables[k])
             local testTrue = false
             if ((not v) and k) then
