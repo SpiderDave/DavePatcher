@@ -196,6 +196,7 @@ RecentMenuHandler:
 ;SelectedFile = %Recent1%
 SelectedFile = %A_ThisMenuItem%
 Open(SelectedFile)
+RefreshRecentFiles(patchFile)
 return
 
 Dummy:

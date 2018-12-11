@@ -2544,6 +2544,8 @@ while true do
             --patcher.fileData=util.getFileContents(patcher.fileName)
         elseif keyword=="load" then
             patcher.load(data)
+        elseif keyword=="reload" then
+            patcher.load()
         elseif keyword=="save" then
             local f = util.trim(data)
             --print("["..f.."]")
