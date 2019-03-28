@@ -128,7 +128,7 @@ asm.set={
     
     [0x15]={opcode="ora", mode="zp,x", length=2},
     [0x16]={opcode="asl", mode="zp,x", length=2},
-    [0x18]={opcode="clc", mode="i", length=1},
+    [0x18]={opcode="clc", mode="i", length=1, format="CLC"},
     [0x19]={opcode="ora", mode="a,y", length=3},
     [0x1d]={opcode="ora", mode="a,x", length=3},
     [0x1e]={opcode="asl", mode="a,x", length=3},
@@ -139,7 +139,7 @@ asm.set={
     [0x24]={opcode="bit", mode="zp", length=2},
     [0x25]={opcode="and", mode="zp", length=2},
     [0x26]={opcode="rol", mode="zp", length=2},
-    [0x28]={opcode="rti", mode="i", length=1},
+    [0x28]={opcode="rti", mode="i", length=1, format = "RTI"},
     [0x29]={opcode="and", mode="#", length=2},
     [0x2a]={opcode="rol", mode="A", length=1},
     [0x2c]={opcode="bit", mode="a", length=3},
@@ -151,13 +151,13 @@ asm.set={
     [0x36]={opcode="rol", mode="zp,x", length=2},
     [0x38]={opcode="sec", mode="i", length=1, format = "SEC"},
     [0x39]={opcode="and", mode="a,y", length=3},
-    [0x3c]={opcode="rts", mode="i", length=1},
+    [-0x3c]={opcode="rts", mode="i", length=1, format = "RTS ----"},
     [0x3d]={opcode="and", mode="a,x", length=3},
     [0x3e]={opcode="rol", mode="a,x", length=3},
     [0x41]={opcode="eor", mode="(zp,x)", length=2},
     [0x45]={opcode="eor", mode="zp", length=2},
     [0x46]={opcode="lsr", mode="zp", length=2},
-    [0x48]={opcode="pha", mode="i", length=1},
+    [0x48]={opcode="pha", mode="i", length=1, format = "PHA"},
     [0x49]={opcode="eor", mode="#", length=2},
     [0x4a]={opcode="lsr", mode="A", length=1, format = "LSR"},
     [0x4c]={opcode="jmp", mode="a", length=3},
@@ -167,7 +167,7 @@ asm.set={
     [0x51]={opcode="eor", mode="(zp),y", length=2},
     [0x55]={opcode="eor", mode="zp,x", length=2},
     [0x56]={opcode="lsr", mode="zp,x", length=2},
-    [0x58]={opcode="cli", mode="i", length=1},
+    [0x58]={opcode="cli", mode="i", length=1, format = "CLI"},
     [0x59]={opcode="eor", mode="a,y", length=3},
     [0x5d]={opcode="eor", mode="a,x", length=3},
     [0x5e]={opcode="lsr", mode="a,x", length=3},
@@ -219,7 +219,7 @@ asm.set={
     [0xa9]={opcode="lda", mode="#", length=2, format = "lda #$<1>"},
     [0xaa]={opcode="tax", mode="i", length=1},
     [0xac]={opcode="ldy", mode="a", length=3},
-    [0xad]={opcode="lda", mode="a", length=3},
+    [0xad]={opcode="lda", mode="a", length=3, format = "lda $<1>"},
     [0xae]={opcode="ldx", mode="a", length=3},
     [0xb0]={opcode="bcs", mode="r", length=2},
     [0xb1]={opcode="lda", mode="(zp),y", length=2},
@@ -240,7 +240,7 @@ asm.set={
     
     [0xc8]={opcode="iny", mode="i", length=1, format = "iny"},
     
-    [0xc9]={opcode="cmp", mode="#", length=2},
+    [0xc9]={opcode="cmp", mode="#", length=2, format = "cmp #$<1>"},
     [0xca]={opcode="dex", mode="i", length=1, format="dex"},
     [0xcc]={opcode="cpy", mode="a", length=3},
     [0xcd]={opcode="cmp", mode="a", length=3},
@@ -276,7 +276,6 @@ asm.set={
     [0xfe]={opcode="inc", mode="a,x", length=2},
     ["default"]={opcode="", mode="", length=1, format="undefined"},
 }
-
 
 asm.print = function(s)
     local data = hex2bin(s)

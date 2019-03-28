@@ -231,4 +231,93 @@ util.unserialize = function(s)
     return Tserial.unpack(s)
 end
 
+util.calc = function(x)
+    x="1+1"
+    return load("return " .. x)
+end
+
+
+util._calc= function(e)
+    e="("..e..")"
+    --print("e="..e)
+    local operations = {
+        ["*"]= function(x,y) return x*y end,
+        ["/"]= function(x,y) return x/y end,
+        ["+"]= function(x,y) return x+y end,
+        ["-"]= function(x,y) return x-y end,
+    }
+    local calc3 = function(e, op)
+        local m= e:match("(%w+)[%"..op.."]%w+")
+        local m2= e:match("%w+[%"..op.."](%w+)")
+        local o= e:match("%w+([%"..op.."])%w+")
+        
+        --print(m..op..m2)
+        if m and m2 then
+            local f = operations[op]
+            return string.format("%x", f(util.toNumber(m),util.toNumber(m2)))
+        else
+            return e
+        end
+    end
+
+    local calc2 = function(e)
+        local m = e:match("^.[%w%*%-%+%/]-$")
+        if m then
+            --print("  matched:"..m)
+            for _,op in ipairs{"*","/","+","-"} do
+                for _=1,15 do
+                    local m= e:match("%w+[%"..op.."]%w+")
+                    if m then
+                        --print("    matched:"..m)
+                        e=e:gsub("(%w+[%"..op.."]%w+)", calc3(m, op))
+                    end
+                end
+            end
+        end
+        return e
+    end
+
+    for _=1,15 do
+        local m = e:match("%((.[^%(%)]-)%)")
+        if m then
+            --print("match:"..m)
+            e=e:gsub("%((.[^%(%)]-)%)", "("..calc2(m)..")")
+            --print("e="..e)
+        end
+
+
+        local m = e:match("%((%w+)%)")
+        if m then
+            --print("match():"..m)
+            e=e:gsub("%((%w+)%)", m)
+            --print("e="..e)
+            --print("e="..e)
+        end
+        
+    end
+    return e
+end
+
+-- Convert a binary number string to a number with an optional base
+function util.toNumber_Binary(s, base)
+    local n=0
+    for i=1,#s do
+        n=n+(2^(i-1))*tonumber(s:sub(-i,-i))
+    end
+    return tonumber(tostring(n), base or 10)
+end
+
+function util.replace(text, old, new, n)
+    n=n or 1
+    for i=1,n do
+        local b,e = text:find(old,1,true)
+        if b==nil then
+        else
+            text = text:sub(1,b-1) .. new .. text:sub(e+1)
+        end
+    end
+    return text
+end
+
+
 return util

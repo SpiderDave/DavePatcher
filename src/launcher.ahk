@@ -76,6 +76,10 @@ Menu, FileMenu, Add, Create New Patch, NewPatch
 Menu, ConfigMenu, Add, Auto Load Last Patch, ConfigMenuHandler
 Menu, ConfigMenu, Add, Auto Load Last Log, ConfigMenuHandler
 Menu, ConfigMenu, Add, Abridged Output, ConfigMenuHandler
+
+
+Menu, ExtrasMenu, Add, NES Opcodes, ExtrasMenuHandler
+
 ;Menu, PatchMenu, Add, dummy, dummy
 Menu, HelpMenu, Add, DavePatcher Help, HelpMenuHandler
 Menu, HelpMenu, Add, About, HelpMenuHandler
@@ -115,6 +119,7 @@ Menu, FileMenu, Add, E&xit, GuiClose
 
 Menu, MyMenuBar, Add, &File, :FileMenu
 Menu, MyMenuBar, Add, &Config, :ConfigMenu
+Menu, MyMenuBar, Add, &Extras, :ExtrasMenu
 ;Menu, MyMenuBar, Add, &Patch, :PatchMenu
 Menu, MyMenuBar, Add, &Help, :HelpMenu
 
@@ -164,6 +169,12 @@ Gui, 2: Add, Link, x+12,<a href="https://github.com/SpiderDave/DavePatcher">gith
 
 Gui, 2: Show, w340 h400, About DavePatcher
 
+return
+
+ExtrasMenuHandler:
+i:=A_ThisMenuItem
+if i=NES Opcodes
+    run http://www.thealmightyguru.com/Games/Hacking/Wiki/index.php/6502_Opcodes
 return
 
 HelpMenuHandler:

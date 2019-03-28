@@ -100,6 +100,7 @@ local patcher = {
         LOGFILE="log.txt",
         BITOPER="NORMAL",
         REPLACELIMIT = 50,
+        DELIM = " ",
     },
     autoRefresh = false,
     outputFileName = "output.nes",
@@ -108,13 +109,21 @@ local patcher = {
     tbl={},
 }
 
+-- Initialize to an empty file
+patcher.fileData = ""
+patcher.originalFileData = patcher.fileData
+patcher.newFileData = patcher.fileData
+patcher.variables.FILESIZE = #patcher.fileData
 
+
+local oldPrint = print
 patcher.print = function(txt)
     if patcher.silent then return end
     if patcher.autolog== true or patcher.launcher then
         patcher.textOut=(patcher.textOut or "")..txt.."\n"
     else
-        print(txt)
+        --print(txt)
+        oldPrint(txt)
     end
 end
 
@@ -201,7 +210,7 @@ function patcher.makeIPS(oldData, newData)
             while true do
                 d1 = oldData:sub(a+1+len,a+1+len)
                 d2 = newData:sub(a+1+len,a+1+len)
-                if d1==d2 then
+                if (d1==d2) or len == 0xffff then
                     break
                 else
                     len=len+1
@@ -211,8 +220,7 @@ function patcher.makeIPS(oldData, newData)
             out = out..hex2bin(string.format("%06x",a)) -- address
             out = out..hex2bin(string.format("%04x",len)) -- length
             out = out..newData:sub(a+1,a+len)
-            --print(#newData:sub(a+1,a+i))
-            --printVerbose("address:%s length:%s", string.format("%06x",a), string.format("%04x",i))
+            printVerbose("address:%s length:%s", string.format("%06x",a), string.format("%04x",len))
             
             nRecords = nRecords +1
             a=a+len
@@ -220,8 +228,8 @@ function patcher.makeIPS(oldData, newData)
         end
     end
     out = out.."EOF"
+    --out = out..hex2bin(string.format("%04x",#newData)) -- truncate
     printVerbose("%s records",nRecords)
-    printf("%s records",nRecords)
     return out
 end
 
@@ -316,6 +324,21 @@ util.isTrue = function(n)
     return nil
 end
 
+-- The empty string is considered null
+util.isNull = function(n)
+    if n == "" then return true end
+    if n then return false end
+    return false
+end
+
+util.isTrueOrZero = function(n)
+    if tonumber(n) == 0 then return true end
+    if n == "" then return nil end
+    if type(n) == "string" and n:lower() == "false" then return false end
+    if n then return true end
+    return nil
+end
+
 util.isEqual = function(a,b)
     if a==b then return true end
     if (tonumber(a)~=nil and tonumber(b)~=nil) and (tonumber(a)==tonumber(b)) then return true end
@@ -331,7 +354,7 @@ function patcher.save(f)
     
     if util.endsWith(string.lower(patcher.outputFileName), ".ips") then
         printf("saving as ips patch to %s", patcher.outputFileName)
-        if not util.writeToFile(patcher.outputFileName, 0, patcher.makeIPS(patcher.originalFileData,patcher.newFileData)) then err("Could not write to file.") end    
+        if not util.writeToFile(patcher.outputFileName, 0, patcher.makeIPS(patcher.originalFileData,patcher.newFileData), true) then err("Could not write to file.") end    
     else
         printf("saving to %s", patcher.outputFileName)
         if not util.writeToFile(patcher.outputFileName, 0, patcher.newFileData, true) then err("Could not write to file.") end
@@ -796,10 +819,17 @@ function patcher.write(address, data)
         data = hex2bin(new2)
     end
     
+    -- expand it
+    if #patcher.newFileData < address then
+        patcher.newFileData = patcher.newFileData..util.hex2bin(string.rep("00", address-#patcher.newFileData+1))
+    end
+    
     patcher.newFileData = patcher.newFileData:sub(1,address) .. data .. patcher.newFileData:sub(address+#data+1)
     if patcher.autoRefresh == true then
         patcher.fileData = patcher.newFileData
+        patcher.variables.FILESIZE = #patcher.fileData
     end
+    
 end
 
 bin2hex=util.bin2hex
@@ -1257,6 +1287,7 @@ while true do
     local data = opt.data
     local assignment = opt.assignment
     local fillVar = nil
+    local asmLabel = nil
     
     
     patcher.lineQueue={}
@@ -1299,6 +1330,32 @@ while true do
             --keyword,data=patcher.lineQueue[r].keyword,patcher.lineQueue[r].data
         end
         
+        if patcher.asmMode then
+            --print("----"..line)
+        end
+        if patcher.asmMode and data then
+            data = util.split(data, ";",1)[1]
+        end
+        
+        if patcher.asmMode and (util.trim(keyword):match("^([%a_]+[%w_]*):$")) then
+            asmLabel = {
+                name=util.trim(keyword):match("^([%a_]+[%w_]*):$"),
+                address = patcher.asmAddress,
+            }
+            
+            --printf("(asm label address=%08x) %s:", asmLabel.address, asmLabel.name)
+            
+            if data then
+                data = util.trim(data)
+                keyword = util.trim(util.split(data, " ",1)[1])
+                data = util.trim(util.split(data, " ",1)[2])
+                --printf("*** k=[%s] d=[%s]",keyword,data)
+            else
+                keyword = "asmlabel"
+            end
+        end
+        
+        
         if util.split(data or "","-->",1)[2] then
             fillVar = util.split(data,"-->",1)[2]
             data = util.split(data,"-->",1)[1]
@@ -1320,18 +1377,31 @@ while true do
             
             print(string.format("Analyzing ASM data:\n[%s]",hexData))
             print(asm.print(hexData))
+        elseif (not patcher.asmMode) and keyword == "increment" then
+            patcher.variables[data] = patcher.variables[data] + 1
+        elseif (not patcher.asmMode) and keyword == "decrement" then
+            patcher.variables[data] = patcher.variables[data] - 1
+        elseif keyword == "_parsetest" then
+            --function patcher.replaceVariables(line)
+            
+            printf("data=", data or "")
+            for k,v in ipairs(util.split(data, "+")) do
+                print(v)
+            end
+            
+            --print(data or "")
         elseif keyword == "print" then
             --local oldsilent = patcher.silent
             --patcher.silent=false
             print(data or "")
             --patcher.silent = oldsilent
         elseif keyword == "choose" then
-            local choice = util.split(data," ")
+            local choice = util.split(data,patcher.variables.DELIM)
             choice = choice[rng:random(1, #choice)]
             patcher.variables['CHOICE'] = choice
             patcher.variables['RET'] = choice
         elseif keyword == "split" then
-            for i,v in ipairs(util.split(data," ")) do
+            for i,v in ipairs(util.split(data,patcher.variables.DELIM)) do
                 patcher.variables['SPLIT'..i] = v
             end
         elseif keyword == "_random" then
@@ -1944,6 +2014,13 @@ while true do
                 if util.startsWith(line, "end print") then break end
                 print(line)
             end
+        elseif util.startsWith(line, "start asm") then
+            print("start asm")
+            patcher.asmMode = true
+            patcher.asmAddress = 0
+        elseif util.startsWith(line, "end asm") then
+            patcher.asmMode = false
+            print("end asm")
         elseif util.startsWith(line, "start tbl") then
             local tableName=util.identifier(util.split(data, " ",1)[2])
             printf("tbl %s",tableName or "(default)")
@@ -2129,7 +2206,7 @@ while true do
             k,v = util.trim(k), util.trim(v)
             patcher.variables[k] = util.toNumber(v)
             printf('Variable: %s = 0x%x (%s)', k, patcher.variables[k], patcher.variables[k])
-        elseif keyword == "dec" or (keyword == "var" and (patcher.variables.DEFTYPE=="dec")) then
+        elseif ((not patcher.asmMode) and keyword == "dec") or (keyword == "var" and (patcher.variables.DEFTYPE=="dec")) then
             local k,v = table.unpack(util.split(data, "=", 1))
             k,v = util.trim(k), util.trim(v)
             patcher.variables[k] = util.toNumber(v, 10)
@@ -2293,6 +2370,19 @@ while true do
             patcher.tileMap[n] = tm
 
             --printf("tilemap size: %s %s",tm.width,tm.height)
+        elseif keyword == "coalesce" then
+            patcher.variables["RET"] = nil
+            for k,v in ipairs(util.split(data, patcher.variables.DELIM or " ")) do
+                --printf("testing value %s", v)
+                
+                if util.startsWith(v, "%") and util.endsWith(v, "%") then
+                    -- Assume it's an undefined variable because it starts and ends with %
+                elseif util.isNull(v)==false then
+                    patcher.variables["RET"] = v
+                    break
+                end
+            end
+            printf("Coalesce value: %s", patcher.variables["RET"])
         elseif keyword == "eval" then
             local f=util.sandbox:loadCode("return "..data)
             patcher.variables["RESULT"] = f()
@@ -2328,6 +2418,21 @@ while true do
             if data == "clear" then
                 textMap = {}
                 printVerbose("clearing textmap")
+            elseif util.split(data, " ")[1]:find("...", nil, true) then
+                local s1, s2 = table.unpack(util.split(util.split(data, " ")[1], "..."))
+                local mapOld = ""
+                local n = tonumber(util.split(data, " ")[2], 16)
+                local mapNew = ""
+                for i=string.byte(s1), string.byte(s2) do
+                    mapOld=mapOld..string.char(i)
+                    mapNew=mapNew..string.format("%02x", n+i-string.byte(s1))
+                end
+                textMap=textMap or {}
+                mapNew=hex2bin(mapNew)
+                for i=1,#mapOld do
+                    textMap[mapOld:sub(i,i)]=mapNew:sub(i,i)
+                end
+
             else
                 local mapOld = data:sub(1,(data:find(" ")-1))
                 local mapNew = data:sub((data:find(" ")+1))
@@ -2367,12 +2472,12 @@ while true do
             data = util.split(data, " ", 1)[2]
             fillCount = util.toNumber(util.split(data, " ", 1)[1])
             fillString = util.stripSpaces(util.split(data, " ", 1)[2])
-            printf("fill: 0x%x 0x%02x [%s]",address, fillCount, fillString)
+            printf("fill: 0x%x 0x%02x [%s]",address, fillCount, util.limitString(fillString))
             
             local newData = string.rep(fillString, fillCount)
             --printVerbose("Fill data: 0x%08x: %s",address, newData)
             patcher.write(address+patcher.offset,hex2bin(newData))
-            printVerbose("Fill data: 0x%08x: %s",address, patcher.variables["NEWDATA"])
+            printVerbose("Fill data: 0x%08x: %s",address, util.limitString(patcher.variables["NEWDATA"]))
             patcher.variables["ADDRESS"] = string.format("%x",address + #newData/2)
         elseif keyword == "md5" then
             local md5
@@ -2535,7 +2640,7 @@ while true do
         elseif keyword=="makeips" then
             local f = util.trim(data)
             printf("Creating IPS patch: %s",f)
-            if not util.writeToFile(f, 0, patcher.makeIPS(patcher.originalFileData,patcher.newFileData)) then err("Could not write to file.") end
+            if not util.writeToFile(f, 0, patcher.makeIPS(patcher.originalFileData,patcher.newFileData), true) then err("Could not write to file.") end
         elseif keyword=="file" then
             if util.trim(data:lower())=="none" then data=nil end
             patcher.fileName = data
@@ -2718,6 +2823,140 @@ while true do
                 local k,v = util.trim(keyword), util.trim(data)
                 patcher.variables[k] = util.toNumber(v, 10)
                 printf('Variable: %s = 0x%x (%s)', k, patcher.variables[k], patcher.variables[k])
+            end
+        elseif patcher.asmMode and (keyword == ".db" or keyword == ".dw") then
+            printf("%s %s", keyword, data)
+            for k,v in pairs(util.split(data, ",")) do
+                print(v)
+            end
+        elseif patcher.asmMode and keyword == ".org" then
+            local address = data:gsub("%$","0x")
+            address = tonumber(address)
+            patcher.asmAddress = address
+        elseif false and patcher.asmMode and (util.trim(keyword):match("^([%a_]+[%w_]*):$")) then
+            -- match labels with nothing else on the line
+            --printf("k=[%s] d=[%s]", keyword, data)
+            keyword = util.trim(keyword)
+            local m = util.trim(keyword):match("^([%a_]+[%w_]*):$")
+            printf("(asm label address=%08x) %s:", patcher.asmAddress, m)
+        elseif patcher.asmMode and keyword=="asmlabel" then
+            patcher.variables[asmLabel.name]=string.format("$%04x",asmLabel.address)
+            printf("*(asm label address=%08x) %s:", asmLabel.address, asmLabel.name)
+
+        elseif patcher.asmMode and patcher.asm.key[keyword:upper()] then
+            if asmLabel then
+                patcher.variables[asmLabel.name]=string.format("$%04x",asmLabel.address)
+                printf("(asm label address=%08x) %s:", asmLabel.address, asmLabel.name)
+            end
+            local instruction = keyword:lower()
+            
+            local mode = ""
+            
+            if data then
+                --printf("%s %s", keyword, data)
+                -- replace first variable, accounting for a starting "#"
+                if data:match("^#?[%a_][%w_]*") then
+                    local imm = data:match("^(#?)[%a_][%w_]*") or ""
+                    --printf("*data=%s imm=%s m=%s",data, imm, data:match("^#?([%a_][%w_]*)"))
+                    --data = data:gsub("^#?([%a_][%w_]*)",imm..(patcher.variables[data:match("^#?([%a_][%w_]*)")] or "0"),1)
+                    
+                    data = util.replace(data, imm..data:match("^#?([%a_][%w_]*)"), imm..(patcher.variables[data:match("^#?([%a_][%w_]*)")] or "0"),1)
+                    
+                    --printf("**data=%s",data)
+                    --break
+                end
+                
+                -- replace variables, accounting for + or - operators
+                while data:match("[+-][%a_][%w_]*") do
+                    local operator = data:match("([+-])[%a_][%w_]*") or ""
+                    --printf("***operator=%s m=%s data=%s",operator, data:match("[+-]([%a_][%w_]*)"),data)
+                    --data = data:gsub("[+-]([%a_][%w_]*)",operator.."__PLACEHOLDER__",1)
+                    data = util.replace(data, operator..data:match("[+-]([%a_][%w_]*)"), operator..(patcher.variables[data:match("[+-]([%a_][%w_]*)")] or "0"),1)
+                    --printf("***done")
+                    --break
+                end
+                
+                -- replace binary with decimal
+                while data:match("%%[01]+") do
+                    data = data:gsub("%%([01]+)",tonumber(data:match("%%([01]+)"),2),1)
+                    --break
+                end
+                
+                -- replace hexidecimal with decimal
+                while data:match("%$[%w_]+") do
+                    data = data:gsub("%$([%w_]+)",tonumber(data:match("%$([%w_]+)"),16),1)
+                    --break
+                end
+                
+                
+                -- Calculate
+                local imm = ""
+                if util.startsWith(data, "#") then imm="#" end
+                if data:gsub("#",""):match("^[%d][%d%s%+%-]*$") then
+                    local f=util.sandbox:loadCode("return "..data:gsub("#",""))
+                    data = tostring(f())
+                else
+                    data = "0"
+                end
+                data = imm..data
+                
+                if util.startsWith(data, "#") then
+                    -- immediate
+                    mode = "#"
+                elseif util.startsWith(data, "$") then
+                    -- absolute
+                    mode = "a"
+                elseif util.startsWith(data, "(") then
+                    mode = "indirect"
+                else
+                    mode = "r"
+                end
+            else
+                -- implied
+                mode = "i"
+            end
+            
+            for i=0,0xff do
+                local v = patcher.asm.set[i] or {}
+                if v.opcode == instruction and v.length==1 then
+                        printf("%04x: %02x        ;%s",patcher.asmAddress, i, v.format or patcher.asm.key[instruction:upper()])
+                elseif mode == "a" and v.opcode == instruction and v.mode == "r" then
+                    --- relative, like beq, bne, etc
+                    local operand = data:gsub("#","")
+                    operand = operand:gsub("%$","0x0")
+                    operand = tonumber(operand) or 0
+                    
+                    operand = operand-patcher.asmAddress-v.length
+                    --operand = 0
+                    
+                    local fmt = v.format or patcher.asm.key[instruction:upper()]
+                    fmt = fmt:gsub("<1>", string.format("%02x",operand))
+                    printf("%04x: %02x %02x     ;%s",patcher.asmAddress, i, operand, fmt)
+                    patcher.asmAddress = patcher.asmAddress + v.length
+                elseif v.mode==mode and v.opcode == instruction then
+                    if v.length==1 then
+                        printf("%04x: %02x        ;%s",patcher.asmAddress, i, v.format or patcher.asm.key[instruction:upper()])
+                    elseif v.length==2 then
+                        --print("**2")
+                        local operand = data:gsub("#","")
+                        operand = operand:gsub("%$","0x0")
+                        operand = tonumber(operand) or 0
+                        local fmt = v.format or patcher.asm.key[instruction:upper()]
+                        fmt = fmt:gsub("<1>", string.format("%02x",operand))
+                        printf("%04x: %02x %02x     ;%s",patcher.asmAddress, i, operand, fmt)
+                        --print("**2end")
+                    elseif v.length==3 then
+                        --print("**3")
+                        local operand = data:gsub("#","")
+                        operand = operand:gsub("%$","0x0")
+                        operand = tonumber(operand) or 0
+                        local fmt = v.format or patcher.asm.key[instruction:upper()]
+                        fmt = fmt:gsub("<1>", string.format("%02x",operand))
+                        printf("%04x: %02x %02x %02x  ;%s",patcher.asmAddress, i, operand % 0x100, math.floor(operand /0x100), fmt)
+                    end
+                    
+                    patcher.asmAddress = patcher.asmAddress + v.length
+                end
             end
         else
             if patcher.interactive then
