@@ -37,3 +37,9 @@ start function addBattery
     put 6 02
     pop variables
 end function
+
+// Wrap the exist keyword to a function so we can use it 
+// directly in "if" statements, ex. "if exists(file.ext)"
+start function exists()
+    exist %PARAM%-->RET
+end function
