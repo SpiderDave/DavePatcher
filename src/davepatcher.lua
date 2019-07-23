@@ -115,6 +115,11 @@ patcher.originalFileData = patcher.fileData
 patcher.newFileData = patcher.fileData
 patcher.variables.FILESIZE = #patcher.fileData
 
+patcher.storage = {
+    fileData="",
+    originalFileData="",
+    newFileData=""
+}
 
 local oldPrint = print
 patcher.print = function(txt)
@@ -191,6 +196,17 @@ function patcher.load(f)
     pcall(function()
         patcher.header = patcher.getHeader()
     end)
+end
+
+-- Unloads current file/data
+function patcher.unload()
+    patcher.fileName = nil
+    patcher.fileData = ""
+    patcher.originalFileData = patcher.fileData
+    patcher.newFileData = patcher.fileData
+    patcher.variables.FILESIZE = #patcher.fileData
+
+    patcher.header = nil
 end
 
 function patcher.makeIPS(oldData, newData)
@@ -799,10 +815,30 @@ local function repr(x)
 end
 -------------
 
+function storageMode()
+    return util.isTrue(patcher.variables.STORAGE)
+end
+
+function patcher.read(address, len)
+    local old
+    if storageMode() then
+        old=patcher.storage.fileData:sub(address+1+patcher.offset,address+patcher.offset+len)
+    else
+        old=patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+len)
+    end
+    return old
+end
 
 -- Write data to patcher.newFileData
 function patcher.write(address, data)
-    local old=patcher.fileData:sub(address+1,address+#data)
+    local old
+    local storageMode=storageMode()
+    
+    if storageMode then
+        old=patcher.storage.fileData:sub(address+1,address+#data)
+    else
+        old=patcher.fileData:sub(address+1,address+#data)
+    end
     old=bin2hex(old)
     local new = bin2hex(data)
     patcher.variables["OLDDATA"] = old
@@ -819,15 +855,30 @@ function patcher.write(address, data)
         data = hex2bin(new2)
     end
     
-    -- expand it
-    if #patcher.newFileData < address then
-        patcher.newFileData = patcher.newFileData..util.hex2bin(string.rep("00", address-#patcher.newFileData+1))
+    if storageMode then
+        -- expand it
+        if #patcher.storage.newFileData < address then
+            patcher.storage.newFileData = patcher.storage.newFileData..util.hex2bin(string.rep("00", address-#patcher.storage.newFileData+1))
+        end
+    else
+        -- expand it
+        if #patcher.newFileData < address then
+            patcher.newFileData = patcher.newFileData..util.hex2bin(string.rep("00", address-#patcher.newFileData+1))
+        end
     end
     
-    patcher.newFileData = patcher.newFileData:sub(1,address) .. data .. patcher.newFileData:sub(address+#data+1)
-    if patcher.autoRefresh == true then
-        patcher.fileData = patcher.newFileData
-        patcher.variables.FILESIZE = #patcher.fileData
+    if storageMode then
+        patcher.storage.newFileData = patcher.storage.newFileData:sub(1,address) .. data .. patcher.storage.newFileData:sub(address+#data+1)
+        if patcher.autoRefresh == true then
+            patcher.storage.fileData = patcher.storage.newFileData
+            patcher.variables.FILESIZE = #patcher.storage.fileData
+        end
+    else
+        patcher.newFileData = patcher.newFileData:sub(1,address) .. data .. patcher.newFileData:sub(address+#data+1)
+        if patcher.autoRefresh == true then
+            patcher.fileData = patcher.newFileData
+            patcher.variables.FILESIZE = #patcher.fileData
+        end
     end
     
 end
@@ -1395,6 +1446,14 @@ while true do
             --patcher.silent=false
             print(data or "")
             --patcher.silent = oldsilent
+        elseif keyword == "echo" then
+            print(data or "")
+            patcher.variables.RET= data or ""
+        elseif keyword == "print2" then
+            --local oldsilent = patcher.silent
+            --patcher.silent=false
+            oldPrint(data or "")
+            --patcher.silent = oldsilent
         elseif keyword == "choose" then
             local choice = util.split(data,patcher.variables.DELIM)
             choice = choice[rng:random(1, #choice)]
@@ -1402,7 +1461,7 @@ while true do
             patcher.variables['RET'] = choice
         elseif keyword == "split" then
             for i,v in ipairs(util.split(data,patcher.variables.DELIM)) do
-                patcher.variables['SPLIT'..i] = v
+                patcher.variables['SPLIT'..string.format("%x",i)] = v
             end
         elseif keyword == "_random" then
             local r = rng:random(0, 255)
@@ -1555,6 +1614,30 @@ while true do
             end
             printf("")
         --elseif startsWith(line:lower(), "replace hex ") then
+        elseif keyword == "hi" then
+            address = string.format("%04x", util.toAddress(data))
+            local hi = string.sub(address, 1,2)
+            local lo = string.sub(address, 3,4)
+            patcher.variables["RET"] = hi
+            patcher.variables["HI"] = hi
+            patcher.variables["LO"] = lo
+            printf(hi)
+        elseif keyword == "lo" then
+            address = string.format("%04x", util.toAddress(data))
+            local hi = string.sub(address, 1,2)
+            local lo = string.sub(address, 3,4)
+            patcher.variables["RET"] = lo
+            patcher.variables["HI"] = hi
+            patcher.variables["LO"] = lo
+            printf(lo)
+        elseif keyword == "pointer" then
+            address = string.format("%04x", util.toAddress(data))
+            local hi = string.sub(address, 1,2)
+            local lo = string.sub(address, 3,4)
+            patcher.variables["RET"] = lo..hi
+            patcher.variables["HI"] = hi
+            patcher.variables["LO"] = lo
+            printf(lo..hi)
         elseif keyword == "delim" then
             patcher.variables.DELIM = data or " "
             printf('Setting delimiter to "%s"', patcher.variables.DELIM)
@@ -1663,7 +1746,8 @@ while true do
             local len = data:sub((data:find(" ")+1))
             len = tonumber(len, 16)
 
-            local old=patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+len)
+            --local old=patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+len)
+            local old=patcher.read(address,len)
             old=bin2hex(old)
             
             print(string.format("Data at 0x%08x: %s",address, old))
@@ -1675,11 +1759,12 @@ while true do
             local len = data:sub((data:find(" ")+1))
             len = tonumber(len, 16)
             
-            local old=patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+len)
+            local old=patcher.read(address,len)
+            
             --old=bin2hex(old)
             local txt=mapText(old,true)
             print(string.format("Text data at 0x%08x: %s",address, txt))
-            patcher.variables["ADDRESS"] = string.format("%x",address + #old/2)
+            patcher.variables["ADDRESS"] = string.format("%x",address + #old)
             patcher.variables["RET"] = txt
         elseif keyword == "get" then
             local data=string.sub(line,5)
@@ -1692,7 +1777,8 @@ while true do
             local len = data:sub((data:find(" ")+1))
             len = util.toNumber(len)
 
-            local old=patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+len)
+            --local old=patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+len)
+            local old=patcher.read(address,len)
             old=bin2hex(old)
             
             print(string.format("Data at 0x%08x: %s",address, util.limitString(old)))
@@ -1707,7 +1793,11 @@ while true do
             print(string.format("Find text: %s",txt))
             for i=1,10 do
                 
-                address = patcher.fileData:find(mapText(txt),startAddress+1+patcher.offset, true)
+                if storageMode() then
+                    address = patcher.storage.fileData:find(mapText(txt),startAddress+1+patcher.offset, true)
+                else
+                    address = patcher.fileData:find(mapText(txt),startAddress+1+patcher.offset, true)
+                end
                 if address then
                     startAddress = address-#txt
                     if address>patcher.startAddress+patcher.offset then
@@ -1757,10 +1847,15 @@ while true do
             patcher.results.clear()
             
             local nResults = 0
-            local limit = 50
+            
+            local limit = util.toNumber(patcher.variables["FINDLIMIT"] or 50)
             while true do
             --for i=1,50 do
-                address = patcher.fileData:find(hex2bin(data),address+1+patcher.offset, true)
+                if storageMode() then
+                    address = patcher.storage.fileData:find(hex2bin(data),address+1+patcher.offset, true)
+                else
+                    address = patcher.fileData:find(hex2bin(data),address+1+patcher.offset, true)
+                end
                 if address then
                     if address>patcher.startAddress+patcher.offset then
                         print(string.format("    %s Found at 0x%08x",data,address-1-patcher.offset))
@@ -1775,8 +1870,11 @@ while true do
             patcher.results.index = 1
             if #patcher.results > 0 then
                 patcher.lastFound = patcher.results[1].address
+                patcher.variables["ADDRESS"] = patcher.results[#patcher.results].address + #data/2
+                patcher.variables["RET"] = patcher.results[#patcher.results].address
             else
                 patcher.lastFound = nil
+                patcher.variables["RET"] = nil
             end
         --elseif keyword == "fontdata" then
             --local font = {"33":[0,0,0,0,0,8,8,8,8,8,0,8,0,0,0,0],"34":[0,0,0,0,0,20,20,0,0,0,0,0,0,0,0,0],"35":[0,0,0,0,0,0,40,124,40,40,124,40,0,0,0,0],"36":[0,0,0,0,16,56,84,20,56,80,84,56,16,0,0,0],"37":[0,0,0,0,0,264,148,72,32,144,328,132,0,0,0,0],"38":[0,0,0,0,0,48,72,48,168,68,196,312,0,0,0,0],"39":[0,0,0,0,0,8,8,0,0,0,0,0,0,0,0,0],"40":[0,0,0,0,0,8,4,4,4,4,4,8,0,0,0,0],"41":[0,0,0,0,0,4,8,8,8,8,8,4,0,0,0,0],"42":[0,0,0,0,32,168,112,428,112,168,32,0,0,0,0,0],"43":[0,0,0,0,0,0,16,16,124,16,16,0,0,0,0,0],"44":[0,0,0,0,0,0,0,0,0,0,24,24,16,8,0,0],"45":[0,0,0,0,0,0,0,0,60,0,0,0,0,0,0,0],"46":[0,0,0,0,0,0,0,0,0,0,24,24,0,0,0,0],"47":[0,0,0,0,0,16,16,8,8,8,4,4,0,0,0,0],"48":[0,0,0,0,0,24,36,36,36,36,36,24,0,0,0,0],"49":[0,0,0,0,0,8,8,8,8,8,8,8,0,0,0,0],"50":[0,0,0,0,0,24,36,32,16,8,4,60,0,0,0,0],"51":[0,0,0,0,0,24,36,32,24,32,36,24,0,0,0,0],"52":[0,0,0,0,0,32,36,36,60,32,32,32,0,0,0,0],"53":[0,0,0,0,0,60,4,4,24,32,36,24,0,0,0,0],"54":[0,0,0,0,0,24,36,4,28,36,36,24,0,0,0,0],"55":[0,0,0,0,0,60,32,32,16,8,8,8,0,0,0,0],"56":[0,0,0,0,0,24,36,36,24,36,36,24,0,0,0,0],"57":[0,0,0,0,0,24,36,36,56,32,36,24,0,0,0,0],"58":[0,0,0,0,0,0,24,24,0,0,24,24,0,0,0,0],"59":[0,0,0,0,0,0,24,24,0,0,24,24,16,8,0,0],"60":[0,0,0,0,0,32,16,8,4,8,16,32,0,0,0,0],"61":[0,0,0,0,0,0,0,60,0,0,60,0,0,0,0,0],"62":[0,0,0,0,0,4,8,16,32,16,8,4,0,0,0,0],"63":[0,0,0,0,0,24,36,32,16,8,0,8,0,0,0,0],"64":[0,0,0,0,240,264,612,660,660,484,8,240,0,0,0,0],"65":[0,0,0,0,0,24,36,36,60,36,36,36,0,0,0,0],"66":[0,0,0,0,0,28,36,36,28,36,36,28,0,0,0,0],"67":[0,0,0,0,0,24,36,4,4,4,36,24,0,0,0,0],"68":[0,0,0,0,0,28,36,36,36,36,36,28,0,0,0,0],"69":[0,0,0,0,0,60,4,4,28,4,4,60,0,0,0,0],"70":[0,0,0,0,0,60,4,4,28,4,4,4,0,0,0,0],"71":[0,0,0,0,0,24,36,4,52,36,36,24,0,0,0,0],"72":[0,0,0,0,0,36,36,36,60,36,36,36,0,0,0,0],"73":[0,0,0,0,0,28,8,8,8,8,8,28,0,0,0,0],"74":[0,0,0,0,0,60,16,16,16,20,20,8,0,0,0,0],"75":[0,0,0,0,0,36,36,20,12,20,36,36,0,0,0,0],"76":[0,0,0,0,0,4,4,4,4,4,4,60,0,0,0,0],"77":[0,0,0,0,0,68,68,108,84,84,68,68,0,0,0,0],"78":[0,0,0,0,0,68,76,84,84,84,100,68,0,0,0,0],"79":[0,0,0,0,0,24,36,36,36,36,36,24,0,0,0,0],"80":[0,0,0,0,0,28,36,36,28,4,4,4,0,0,0,0],"81":[0,0,0,0,0,24,36,36,36,52,36,88,0,0,0,0],"82":[0,0,0,0,0,28,36,36,28,36,36,36,0,0,0,0],"83":[0,0,0,0,0,24,36,4,24,32,36,24,0,0,0,0],"84":[0,0,0,0,0,124,16,16,16,16,16,16,0,0,0,0],"85":[0,0,0,0,0,36,36,36,36,36,36,24,0,0,0,0],"86":[0,0,0,0,0,68,68,68,68,40,40,16,0,0,0,0],"87":[0,0,0,0,0,84,84,84,84,84,56,40,0,0,0,0],"88":[0,0,0,0,0,68,68,40,16,40,68,68,0,0,0,0],"89":[0,0,0,0,0,68,68,40,16,16,16,16,0,0,0,0],"90":[0,0,0,0,0,60,32,16,16,8,4,60,0,0,0,0],"91":[0,0,0,0,0,28,4,4,4,4,4,28,0,0,0,0],"92":[0,0,0,0,0,4,4,8,8,8,16,16,0,0,0,0],"93":[0,0,0,0,0,28,16,16,16,16,16,28,0,0,0,0],"94":[0,0,0,0,0,24,36,0,0,0,0,0,0,0,0,0],"95":[0,0,0,0,0,0,0,0,0,0,0,0,508,0,0,0],"96":[0,0,0,0,0,4,8,0,0,0,0,0,0,0,0,0],"97":[0,0,0,0,0,0,0,24,32,56,36,88,0,0,0,0],"98":[0,0,0,0,0,0,4,4,28,36,36,28,0,0,0,0],"99":[0,0,0,0,0,0,0,0,24,4,4,24,0,0,0,0],"100":[0,0,0,0,0,0,32,32,56,36,36,88,0,0,0,0],"101":[0,0,0,0,0,0,0,24,36,28,4,56,0,0,0,0],"102":[0,0,0,0,0,0,48,8,8,28,8,8,0,0,0,0],"103":[0,0,0,0,0,0,0,0,88,36,36,56,32,36,24,0],"104":[0,0,0,0,0,0,4,4,4,28,36,36,0,0,0,0],"105":[0,0,0,0,0,0,8,0,12,8,8,8,0,0,0,0],"106":[0,0,0,0,0,0,0,16,0,24,16,16,16,12,0,0],"107":[0,0,0,0,0,0,0,4,20,12,20,20,0,0,0,0],"108":[0,0,0,0,0,0,4,4,4,4,4,8,0,0,0,0],"109":[0,0,0,0,0,0,0,0,4,88,168,168,0,0,0,0],"110":[0,0,0,0,0,0,0,0,4,28,36,36,0,0,0,0],"111":[0,0,0,0,0,0,0,0,24,36,36,24,0,0,0,0],"112":[0,0,0,0,0,0,0,4,56,72,72,56,8,8,8,0],"113":[0,0,0,0,0,0,0,0,88,36,36,56,32,32,64,0],"114":[0,0,0,0,0,0,0,0,52,72,8,8,0,0,0,0],"115":[0,0,0,0,0,0,0,24,4,24,32,24,0,0,0,0],"116":[0,0,0,0,0,0,8,8,28,8,8,16,0,0,0,0],"117":[0,0,0,0,0,0,0,0,36,36,36,88,0,0,0,0],"118":[0,0,0,0,0,0,0,0,68,68,40,16,0,0,0,0],"119":[0,0,0,0,0,0,0,0,84,84,84,40,0,0,0,0],"120":[0,0,0,0,0,0,0,0,36,24,24,36,0,0,0,0],"121":[0,0,0,0,0,0,0,0,36,36,36,56,32,36,24,0],"122":[0,0,0,0,0,0,0,0,60,16,8,60,0,0,0,0],"123":[0,0,0,16,8,8,8,4,8,8,8,16,0,0,0,0],"124":[0,0,0,8,8,8,8,8,8,8,8,8,0,0,0,0],"125":[0,0,0,4,8,8,8,16,8,8,8,4,0,0,0,0],"126":[0,0,0,0,0,0,0,24,292,192,0,0,0,0,0,0],"161":[0,0,0,0,0,8,0,8,8,8,8,8,0,0,0,0],"162":[0,0,0,0,0,0,16,56,20,20,56,16,0,0,0,0],"163":[0,0,0,0,0,48,8,8,28,8,8,60,0,0,0,0],"164":[0,0,0,0,0,0,132,120,72,72,120,132,0,0,0,0],"165":[0,0,0,0,68,40,16,56,16,56,16,16,0,0,0,0],"166":[0,0,0,8,8,8,8,0,8,8,8,8,0,0,0,0],"167":[0,0,0,0,0,0,48,72,8,48,72,72,48,64,72,48],"168":[0,0,0,0,0,108,108,0,0,0,0,0,0,0,0,0],"169":[0,0,0,0,240,264,612,532,532,612,264,240,0,0,0,0],"8364":[0,0,0,0,0,112,8,60,8,60,8,112,0,0,0,0],"name":"SlightlyFancyPix","copy":"SpiderDave","letterspace":"64","basefont_size":"512","basefont_left":"62","basefont_top":"0","basefont":"Arial","basefont2":""}
@@ -2138,7 +2236,7 @@ while true do
             if args then
                 patch.f[n][#patch.f[n]+1]="split %PARAM%"
                 for i,v in ipairs(util.split(args," ")) do
-                    patch.f[n][#patch.f[n]+1]=v.."=".."%SPLIT"..i.."%"
+                    patch.f[n][#patch.f[n]+1]=v.."=".."%SPLIT"..string.format("%x", i).."%"
                 end
             end
             
@@ -2618,7 +2716,11 @@ while true do
             elseif data == "manual" then
                 patcher.autoRefresh = false
             else
-                patcher.fileData = patcher.newFileData
+                if storageMode() then
+                    patcher.storage.fileData = patcher.storage.newFileData
+                else
+                    patcher.fileData = patcher.newFileData
+                end
             end
         elseif keyword=="revert" then
             patcher.newFileData = patcher.fileData
@@ -2647,6 +2749,8 @@ while true do
             file = data
             printf("File: %s",patcher.fileName or "(none)")
             --patcher.fileData=util.getFileContents(patcher.fileName)
+        elseif keyword=="unload" then
+            patcher.unload()
         elseif keyword=="load" then
             patcher.load(data)
         elseif keyword=="reload" then
@@ -2699,20 +2803,41 @@ while true do
             patcher.base = tonumber(data,10)
             printf("base: %s",patcher.base)
         elseif keyword == "diff" then
+            local compact = util.isTrue(patcher.variables["DIFFCOMPACT"])
             local diff={}
-            diff.fileName = data
+            
+            diff.fileName = data or patcher.fileName
             diff.data = util.getFileContents(diff.fileName)
             diff.count=1
-            printf("current file: %s bytes",#patcher.fileData)
+            printf("current file: %s bytes",#patcher.newFileData)
             printf("%s: %s bytes",diff.fileName, #diff.data)
-            for i = 0,#patcher.fileData -1 do
-                diff.old =string.byte(patcher.fileData:sub(i+patcher.offset+1,i+patcher.offset+1))
+            diff.old2=""
+            diff.new2=""
+            for i = 0,#patcher.newFileData -1 do
+                diff.old =string.byte(patcher.newFileData:sub(i+patcher.offset+1,i+patcher.offset+1))
                 diff.new =string.byte(diff.data:sub(i+patcher.offset+1,i+patcher.offset+1))
-                --printf("%02x %06x  %02x | %02x",diff.count, i, diff.old,diff.new)
                 if diff.old~=diff.new then
-                    printf("%02x %06x  %02x | %02x",diff.count, i, diff.old,diff.new)
-                    diff.count=diff.count+1
+                    diff.lastChange = i
+                    if compact then
+                    else
+                        printf("%02x %06x  %02x | %02x",diff.count, i, diff.old,diff.new)
+                        diff.count=diff.count+1
+                    end
                     if diff.count>patcher.diffMax then break end
+                else
+                    if diff.lastChange == i-1 then
+                        --print("*************")
+                        --printf("%06x %06x", diff.lastSame+1, diff.lastChange - diff.lastSame)
+                        diff.old2 = bin2hex(patcher.newFileData:sub(diff.lastSame+patcher.offset+2,diff.lastSame+patcher.offset+(diff.lastChange - diff.lastSame+1)))
+                        diff.new2 = bin2hex(diff.data:sub(diff.lastSame+patcher.offset+2,diff.lastSame+patcher.offset+(diff.lastChange - diff.lastSame+1)))
+                        if compact then
+                            printf("%02x %06x %s | %s",diff.count, diff.lastSame+1, diff.old2, diff.new2)
+                            diff.count=diff.count+1
+                        else
+                            print("--------------------")
+                        end
+                    end
+                    diff.lastSame = i
                 end
             end
         elseif keyword == "ips" then
@@ -2969,7 +3094,10 @@ while true do
         end
         
         if fillVar then
-            printf('-->Variable: %s = %s', fillVar, util.limitString(patcher.variables.RET))
+            if patcher.silent then
+            else
+                printf('-->Variable: %s = %s', fillVar, util.limitString(patcher.variables.RET))
+            end
             patcher.variables[fillVar] = patcher.variables.RET
         end
         
