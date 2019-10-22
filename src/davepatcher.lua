@@ -2468,6 +2468,23 @@ while true do
             patcher.tileMap[n] = tm
 
             --printf("tilemap size: %s %s",tm.width,tm.height)
+        elseif keyword == "default" then
+            local varName=util.trim(util.split(data, patcher.variables.DELIM or " ")[1])
+
+            if util.isTrueOrZero(patcher.variables[varName])~=true then
+                local v = util.ltrim(util.split(data, patcher.variables.DELIM or " ",1)[2])
+
+                if patcher.variables.DEFTYPE=="str" then
+                    patcher.variables[varName] = v
+                    printf('Variable: %s = "%s"', varName, util.ltrim(v))
+                elseif patcher.variables.DEFTYPE=="num" then
+                    patcher.variables[varName] = util.toNumber(v)
+                    printf('Variable: %s = 0x%x (%s)', varName, patcher.variables[varName], patcher.variables[varName])
+                elseif patcher.variables.DEFTYPE=="dec" then
+                    patcher.variables[varName] = util.toNumber(v, 10)
+                    printf('Variable: %s = 0x%x (%s)', varName, patcher.variables[varName], patcher.variables[varName])
+                end
+            end
         elseif keyword == "coalesce" then
             patcher.variables["RET"] = nil
             for k,v in ipairs(util.split(data, patcher.variables.DELIM or " ")) do
