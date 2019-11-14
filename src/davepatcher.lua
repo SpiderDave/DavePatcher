@@ -107,6 +107,9 @@ local patcher = {
     strict=false,
     breakLoop=false,
     tbl={},
+    textMaps = {
+        current = "default",
+    },
 }
 
 -- Initialize to an empty file
@@ -1984,6 +1987,13 @@ while true do
             end
             
             print(string.format("importing tile map %s from %s",tileMap, fileName))
+            
+            local oldPalette
+            if patcher.autoPalette and patcher.tileMap[tileMap].palette then
+                oldPalette = patcher.variables["PALETTE"]
+                patcher.setPalette(patcher.tileMap[tileMap].palette)
+            end
+            
             local tileData = imageToTile3(tileMap, fileName)
             
             local address,td
@@ -1991,6 +2001,11 @@ while true do
                 address,td=tileData[i].address, tileData[i].t
                 patcher.write(address+patcher.offset,td)
             end
+            
+            if patcher.autoPalette and patcher.tileMap[tileMap].palette then
+                patcher.setPalette(oldPalette)
+            end
+            
             patcher.variables['TILEMAPX'] = oldTilemapX
             patcher.variables['TILEMAPY'] = oldTilemapY
             
@@ -2138,7 +2153,7 @@ while true do
         elseif keyword=="expression" then
             local calc= function(e)
                 e="("..e..")"
-                print("e="..e)
+                printVerbose("e="..e)
                 local operations = {
                     ["*"]= function(x,y) return x*y end,
                     ["/"]= function(x,y) return x/y end,
@@ -2181,7 +2196,7 @@ while true do
                     if m then
                         --print("match:"..m)
                         e=e:gsub("%((.[^%(%)]-)%)", "("..calc2(m)..")")
-                        print("e="..e)
+                        printVerbose("e="..e)
                     end
 
 
@@ -2190,7 +2205,7 @@ while true do
                         --print("match():"..m)
                         e=e:gsub("%((%w+)%)", m)
                         --print("e="..e)
-                        print("e="..e)
+                        printVerbose("e="..e)
                     end
                     
                 end
@@ -2530,9 +2545,15 @@ while true do
             
             patcher.variables["ADDRESS"] = string.format("%x",address + #txt)
         elseif keyword == "textmap" then
-            if data == "clear" then
+            local data1 = util.split(data, patcher.variables.DELIM or " ")[1]
+            if data1 == "set" then
+                patcher.textMaps.current = util.split(data, patcher.variables.DELIM or " ")[2]
+                patcher.textMaps[patcher.textMaps.current] = patcher.textMaps[patcher.textMaps.current] or {}
+                textMap = patcher.textMaps[patcher.textMaps.current]
+            elseif data == "clear" then
                 textMap = {}
                 printVerbose("clearing textmap")
+                patcher.textMaps[patcher.textMaps.current] = textMap
             elseif util.split(data, " ")[1]:find("...", nil, true) then
                 local s1, s2 = table.unpack(util.split(util.split(data, " ")[1], "..."))
                 local mapOld = ""
@@ -2547,7 +2568,7 @@ while true do
                 for i=1,#mapOld do
                     textMap[mapOld:sub(i,i)]=mapNew:sub(i,i)
                 end
-
+                patcher.textMaps[patcher.textMaps.current] = textMap
             else
                 local mapOld = data:sub(1,(data:find(" ")-1))
                 local mapNew = data:sub((data:find(" ")+1))
@@ -2560,6 +2581,7 @@ while true do
                         textMap[mapOld:sub(i,i)]=mapNew:sub(i,i)
                     end
                 end
+                patcher.textMaps[patcher.textMaps.current] = textMap
             end
         elseif keyword == "put" then
             local address = data:sub(1,(data:find(" ")))
