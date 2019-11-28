@@ -72,6 +72,13 @@ local allow_plugins = false
 local plugins = {
 }
 
+--verbose levels: 
+--0 quiet
+--1 normal
+--2 verbose
+--3 verbose 2
+--4 debug
+
 local patcher = {
     info = {
         name = "DavePatcher",
@@ -85,7 +92,7 @@ local patcher = {
     diffMax = 1000,
     gotoCount = 0,
     gotoLimit = 100,
-    verbose = false,
+    verboseLevel = 1,
     annotations = false,
     interactive = false,
     prompt = "> ",
@@ -126,7 +133,7 @@ patcher.storage = {
 
 local oldPrint = print
 patcher.print = function(txt)
-    if patcher.silent then return end
+    if patcher.verboseLevel == 0 then return end
     if patcher.autolog== true or patcher.launcher then
         patcher.textOut=(patcher.textOut or "")..txt.."\n"
     else
@@ -413,8 +420,28 @@ Options:
 --  -i          interactive mode (broken at the moment!)
 patcher.help.interactive = [[Type "help" for this help, or "break" to quit.]]
 
+printSilent = function(s, ...)
+    if patcher.verboseLevel >=0 then
+        return oldPrint(s:format(...))
+    end
+end
+printNormal = function(s, ...)
+    if patcher.verboseLevel >=1 then
+        return print(s:format(...))
+    end
+end
 printVerbose = function(s, ...)
-    if patcher.verbose then
+    if patcher.verboseLevel >=2 then
+        return print(s:format(...))
+    end
+end
+printVerbose2 = function(s, ...)
+    if patcher.verboseLevel >=3 then
+        return print(s:format(...))
+    end
+end
+printDebug = function(s, ...)
+    if patcher.verboseLevel >=4 then
         return print(s:format(...))
     end
 end
@@ -1423,7 +1450,7 @@ while true do
         end
         
         if util.startsWith(line, "#") then
-            if patcher.annotations or patcher.verbose then
+            if patcher.annotations or patcher.verboseLevel >= 2 then
                 print(string.sub(line,1))
             end
         elseif util.startsWith(line:lower(), "print asm ") then
@@ -1445,18 +1472,15 @@ while true do
             
             --print(data or "")
         elseif keyword == "print" then
-            --local oldsilent = patcher.silent
-            --patcher.silent=false
             print(data or "")
-            --patcher.silent = oldsilent
         elseif keyword == "echo" then
             print(data or "")
             patcher.variables.RET= data or ""
         elseif keyword == "print2" then
-            --local oldsilent = patcher.silent
-            --patcher.silent=false
-            oldPrint(data or "")
-            --patcher.silent = oldsilent
+            local l=patcher.verboseLevel
+            patcher.verboseLevel = 1
+            print(data or "")
+            patcher.verboseLevel = l
         elseif keyword == "choose" then
             local choice = util.split(data,patcher.variables.DELIM)
             choice = choice[rng:random(1, #choice)]
@@ -1472,12 +1496,48 @@ while true do
         elseif util.startsWith(line, "//") then
             -- comment
         elseif keyword == "silent" then
-            local err
-            patcher[keyword], err = util.switch(data, true)
+            local err, switch
+            switch, err = util.switch(data, true)
             if err then
                 warning('Invalid switch value for %s: "%s"',keyword, data)
+            elseif switch then
+                patcher.verboseLevel = 0
+            else
+                patcher.verboseLevel = 1
             end
-        elseif keyword == "verbose" or keyword == "strict" or keyword == "annotations" then
+        elseif keyword == "verbose" then
+            if data == "silent" or data == "quiet" then
+                printVerbose2("Verbose level: %d",patcher.verboseLevel)
+                patcher.verboseLevel = 0
+            elseif data == "normal" or data == "" then
+                printVerbose2("Verbose level: %d",patcher.verboseLevel)
+                patcher.verboseLevel = 1
+            elseif data == "verbose" then
+                printVerbose2("Verbose level: %d",patcher.verboseLevel)
+                patcher.verboseLevel = 2
+            elseif data == "verbose2" then
+                printVerbose2("Verbose level: %d",patcher.verboseLevel)
+                patcher.verboseLevel = 3
+            elseif data == "debug" then
+                printVerbose2("Verbose level: %d",patcher.verboseLevel)
+                patcher.verboseLevel = 4
+            else
+                local err, switch
+                switch, err = util.switch(data, true)
+                if err then
+                    warning('Invalid switch value for %s: "%s"',keyword, data)
+                elseif switch then
+                    -- verbose on
+                    -- set verboseLevel to verbose
+                    patcher.verboseLevel = 2
+                else
+                    -- verbose off
+                    -- set verboseLevel to normal
+                    patcher.verboseLevel = 1
+                end
+                
+            end
+        elseif keyword == "strict" or keyword == "annotations" then
             local err
             patcher[keyword], err = util.switch(data, true)
             if err then
@@ -2313,17 +2373,17 @@ while true do
             local k,v = table.unpack(util.split(data, "=", 1))
             k,v = util.trim(k), util.trim(v)
             patcher.variables[k] = v
-            printf('Variable: %s = "%s"', k, v)
+            printVerbose('Variable: %s = "%s"', k, v)
         elseif keyword == "num" or (keyword == "var" and (patcher.variables.DEFTYPE=="num")) then
             local k,v = table.unpack(util.split(data, "=", 1))
             k,v = util.trim(k), util.trim(v)
             patcher.variables[k] = util.toNumber(v)
-            printf('Variable: %s = 0x%x (%s)', k, patcher.variables[k], patcher.variables[k])
+            printVerbose('Variable: %s = 0x%x (%s)', k, patcher.variables[k], patcher.variables[k])
         elseif ((not patcher.asmMode) and keyword == "dec") or (keyword == "var" and (patcher.variables.DEFTYPE=="dec")) then
             local k,v = table.unpack(util.split(data, "=", 1))
             k,v = util.trim(k), util.trim(v)
             patcher.variables[k] = util.toNumber(v, 10)
-            printf('Variable: %s = 0x%x (%s)', k, patcher.variables[k], patcher.variables[k])
+            printVerbose('Variable: %s = 0x%x (%s)', k, patcher.variables[k], patcher.variables[k])
         --elseif keyword == "if" and util.endsWith(data, ")") then
         elseif keyword=="if" and patch.parseFunctionString(data) then
             local fName,param,data = patch.parseFunctionString(data)
@@ -2491,13 +2551,13 @@ while true do
 
                 if patcher.variables.DEFTYPE=="str" then
                     patcher.variables[varName] = v
-                    printf('Variable: %s = "%s"', varName, util.ltrim(v))
+                    printVerbose('Variable: %s = "%s"', varName, util.ltrim(v))
                 elseif patcher.variables.DEFTYPE=="num" then
                     patcher.variables[varName] = util.toNumber(v)
-                    printf('Variable: %s = 0x%x (%s)', varName, patcher.variables[varName], patcher.variables[varName])
+                    printVerbose('Variable: %s = 0x%x (%s)', varName, patcher.variables[varName], patcher.variables[varName])
                 elseif patcher.variables.DEFTYPE=="dec" then
                     patcher.variables[varName] = util.toNumber(v, 10)
-                    printf('Variable: %s = 0x%x (%s)', varName, patcher.variables[varName], patcher.variables[varName])
+                    printVerbose('Variable: %s = 0x%x (%s)', varName, patcher.variables[varName], patcher.variables[varName])
                 end
             end
         elseif keyword == "coalesce" then
@@ -2963,7 +3023,7 @@ while true do
                 end
             end
             printVerbose("%s records (%s RLE)",ips.nRecords, ips.nRLE)
-            print("ips done.")
+            printVerbose("ips done.")
         elseif keyword == "use" then
             if data:lower() == "gd" then
                 graphics:init("gd")
@@ -2978,15 +3038,15 @@ while true do
         elseif (assignment == true) and (patcher.strict~=true) then
             if patcher.variables.DEFTYPE=="str" then
                 patcher.variables[keyword] = util.ltrim(data)
-                printf('Variable: %s = "%s"', keyword, util.ltrim(data))
+                printVerbose('Variable: %s = "%s"', keyword, util.ltrim(data))
             elseif patcher.variables.DEFTYPE=="num" then
                 local k,v = util.trim(keyword), util.trim(data)
                 patcher.variables[k] = util.toNumber(v)
-                printf('Variable: %s = 0x%x (%s)', k, patcher.variables[k], patcher.variables[k])
+                printVerbose('Variable: %s = 0x%x (%s)', k, patcher.variables[k], patcher.variables[k])
             elseif patcher.variables.DEFTYPE=="dec" then
                 local k,v = util.trim(keyword), util.trim(data)
                 patcher.variables[k] = util.toNumber(v, 10)
-                printf('Variable: %s = 0x%x (%s)', k, patcher.variables[k], patcher.variables[k])
+                printVerbose('Variable: %s = 0x%x (%s)', k, patcher.variables[k], patcher.variables[k])
             end
         elseif patcher.asmMode and (keyword == ".db" or keyword == ".dw") then
             printf("%s %s", keyword, data)
@@ -3126,17 +3186,14 @@ while true do
             if patcher.interactive then
                 print(string.format("unknown command: %s",line))
             else
-                if (patcher.strict==true) or patcher.verbose then
+                if (patcher.strict==true) or patcher.verboseLevel >= 2 then
                     warning("Unknown command: %s",line)
                 end
             end
         end
         
         if fillVar then
-            if patcher.silent then
-            else
-                printf('-->Variable: %s = %s', fillVar, util.limitString(patcher.variables.RET))
-            end
+            printVerbose('-->Variable: %s = %s', fillVar, util.limitString(patcher.variables.RET))
             patcher.variables[fillVar] = patcher.variables.RET
         end
         
