@@ -22,6 +22,8 @@ echo Compiling launcher...
 
 copy package\launcher.exe ..\
 
+copy package\*.dll ..\
+
 goto theend
 
 :error
