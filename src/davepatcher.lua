@@ -1436,6 +1436,17 @@ while true do
             end
         end
         
+        if util.split(line or "",":=",1)[2] then
+            fillVar = util.split(line,":=",1)[1]
+            --data = util.split(line,":=",1)[2]
+            line = util.split(line,":=",1)[2]
+            local opt
+            line, opt = patch.parseLine(line)
+            keyword = opt.keyword
+            keywordOriginal = opt.keywordOriginal
+            data = opt.data
+            assignment = opt.assignment
+        end
         
         if util.split(data or "","-->",1)[2] then
             fillVar = util.split(data,"-->",1)[2]
@@ -1490,6 +1501,23 @@ while true do
             for i,v in ipairs(util.split(data,patcher.variables.DELIM)) do
                 patcher.variables['SPLIT'..string.format("%x",i)] = v
             end
+        elseif keyword == "join" then
+            local ret = ""
+            for k,v in ipairs(util.split(data,patcher.variables.DELIM)) do
+                ret = ret .. v
+            end
+            patcher.variables.RET= ret
+        elseif (keyword == "interpolate") or (keyword == "interp") then
+            -- Performs string interpolate on the input.  note that the usual string interpolation 
+            -- is done automatically on the input as usual, so this is processing it again, making
+            -- "variable variables" possible.
+            --
+            -- foo1=bar
+            -- foo2=baz
+            -- i=2
+            -- interpolate foo%i%-->n
+            -- // n==baz
+            patcher.variables.RET=patcher.variables[patcher.replaceVariables(data)]
         elseif keyword == "_random" then
             local r = rng:random(0, 255)
             patcher.variables['RET'] = r
