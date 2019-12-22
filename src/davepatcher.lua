@@ -30,7 +30,9 @@
 --   * allow patch addresses like 02:1200
 --   * allow graphics importing to use the closest color if it doesn't match exactly
 --   * multiple (named) textmaps
+--      *DONE*
 --   * add output levels (verbose, silent, etc)
+--      *DONE* using "verbose" keyword with new parameters.
 --   * migrate some useful variables to the patcher's "special variables"
 --   * test on other OS
 --   * more cairo integration
@@ -1786,7 +1788,8 @@ while true do
                 
                 while true do
                 --for i=1,50 do
-                    address = patcher.fileData:find(hex2bin(findValue),address+1+patcher.offset, true)
+                    --address = patcher.fileData:find(hex2bin(findValue),address+1+patcher.offset, true)
+                    address = patcher.fileData:find(hex2bin(findValue),address+1, true)
                     if (address or 0) > #patcher.fileData-1 then
                         patcher.variables["ADDRESS"] = 0
                         break
@@ -1878,19 +1881,22 @@ while true do
             patcher.variables["RET"] = old
         elseif util.startsWith(line, "find text ") then
             local txt=string.sub(line,11)
-            address=0
+            address=patcher.offset
             local startAddress=0
             local firstFound
             print(string.format("Find text: %s",txt))
             for i=1,10 do
                 
                 if storageMode() then
-                    address = patcher.storage.fileData:find(mapText(txt),startAddress+1+patcher.offset, true)
+                    --address = patcher.storage.fileData:find(mapText(txt),startAddress+1+patcher.offset, true)
+                    address = patcher.storage.fileData:find(mapText(txt),startAddress+1, true)
                 else
-                    address = patcher.fileData:find(mapText(txt),startAddress+1+patcher.offset, true)
+                    --address = patcher.fileData:find(mapText(txt),startAddress+1+patcher.offset, true)
+                    address = patcher.fileData:find(mapText(txt),startAddress+1, true)
                 end
                 if address then
-                    startAddress = address-#txt
+                    --startAddress = address-#txt
+                    startAddress = address
                     if address>patcher.startAddress+patcher.offset then
                         print(string.format("    %s Found at 0x%08x",txt,address-1-patcher.offset))
                         if not firstFound then
@@ -1932,8 +1938,8 @@ while true do
                 warning('depreciated keyword "find hex". use "find" instead')
             end
             
-            address=0
-            print(string.format("Find hex: %s",data))
+            address = patcher.offset
+            print(string.format("Find: %s",data))
             data = util.stripSpaces(data)
             patcher.results.clear()
             
@@ -1943,9 +1949,11 @@ while true do
             while true do
             --for i=1,50 do
                 if storageMode() then
-                    address = patcher.storage.fileData:find(hex2bin(data),address+1+patcher.offset, true)
+                    --address = patcher.storage.fileData:find(hex2bin(data),address+1+patcher.offset, true)
+                    address = patcher.storage.fileData:find(hex2bin(data),address+1, true)
                 else
-                    address = patcher.fileData:find(hex2bin(data),address+1+patcher.offset, true)
+                    --address = patcher.fileData:find(hex2bin(data),address+1+patcher.offset, true)
+                    address = patcher.fileData:find(hex2bin(data),address+1, true)
                 end
                 if address then
                     if address>patcher.startAddress+patcher.offset then
