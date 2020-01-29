@@ -135,6 +135,7 @@ patcher.storage = {
 
 local oldPrint = print
 patcher.print = function(txt)
+    txt = txt or ""
     if patcher.verboseLevel == 0 then return end
     if patcher.autolog== true or patcher.launcher then
         patcher.textOut=(patcher.textOut or "")..txt.."\n"
@@ -391,6 +392,7 @@ function patcher.save(f)
 end
 
 local asm = require("include.asm")
+asm.init{util=util, variables=patcher.variables}
 patcher.asm = asm
 
 --print("#  l  op  mode")
@@ -1470,7 +1472,8 @@ while true do
             hexData=string.sub(line,11)
             
             print(string.format("Analyzing ASM data:\n[%s]",hexData))
-            print(asm.print(hexData))
+            print()
+            print(asm.print(hexData, util.toNumber(patcher.variables.ORG) or 0))
         elseif (not patcher.asmMode) and keyword == "increment" then
             patcher.variables[data] = patcher.variables[data] + 1
         elseif (not patcher.asmMode) and keyword == "decrement" then
@@ -1829,7 +1832,8 @@ while true do
             hexData=bin2hex(hexData)
             
             print(string.format("Analyzing data at 0x%08x:\n[%s]",address, hexData))
-            print(asm.print(hexData))
+            print()
+            print(asm.print(hexData, util.toNumber(patcher.variables.ORG) or 0))
         elseif util.startsWith(line:lower(), "get hex ") then
             warning('depreciated keyword "get hex". use "get" instead')
             local data=string.sub(line,9)
@@ -2955,7 +2959,7 @@ while true do
                     diff.lastChange = i
                     if compact then
                     else
-                        printf("%02x %06x  %02x | %02x",diff.count, i, diff.old,diff.new)
+                        printf("%02x %06x  %02x | %02x",diff.count, i, diff.old or 0x42,diff.new or 0x42)
                         diff.count=diff.count+1
                     end
                     if diff.count>patcher.diffMax then break end

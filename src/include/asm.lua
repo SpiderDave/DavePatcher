@@ -121,7 +121,7 @@ asm.set={
     [0x0a]={opcode="asl", mode="A", length=1},
     [0x0d]={opcode="ora", mode="a", length=3},
     [0x0e]={opcode="asl", mode="a", length=3},
-    [0x10]={opcode="bpl", mode="r", length=2},
+    [0x10]={opcode="bpl", mode="r", length=2, format="bpl +$<r1>"},
     [0x11]={opcode="ora", mode="(zp),y", length=2},
     
     [0x14]={opcode="jsr", mode="a", length=3},
@@ -172,13 +172,13 @@ asm.set={
     [0x5d]={opcode="eor", mode="a,x", length=3},
     [0x5e]={opcode="lsr", mode="a,x", length=3},
     
-    [0x60]={opcode="rts", mode="i", length=1, format="RTS ----"},
+    [0x60]={opcode="rts", mode="i", length=1, format="rts \n----------------"},
     
     [0x61]={opcode="adc", mode="(zp,x)", length=2},
     [0x65]={opcode="adc", mode="zp", length=2},
     [0x66]={opcode="ror", mode="zp", length=2},
     [0x68]={opcode="pla", mode="i", length=1},
-    [0x69]={opcode="adc", mode="#", length=2},
+    [0x69]={opcode="adc", mode="#", length=2, format="adc #<1>"},
     [0x6a]={opcode="ror", mode="A", length=1},
     [0x6c]={opcode="jmp", mode="(a)", length=3},
     [0x6d]={opcode="adc", mode="a", length=3},
@@ -187,7 +187,7 @@ asm.set={
     [0x71]={opcode="adc", mode="(zp),y", length=2},
     [0x75]={opcode="adc", mode="zp,x", length=2},
     [0x76]={opcode="ror", mode="zp,x", length=2},
-    [0x78]={opcode="sei", mode="i", length=1},
+    [0x78]={opcode="sei", mode="i", length=1, format="sei"},
     [0x79]={opcode="adc", mode="a,y", length=3},
     [0x7d]={opcode="adc", mode="a,x", length=3},
     [0x7e]={opcode="ror", mode="a,x", length=3},
@@ -198,7 +198,7 @@ asm.set={
     [0x88]={opcode="dey", mode="i", length=1},
     [0x8a]={opcode="txa", mode="i", length=1},
     [0x8c]={opcode="sty", mode="a", length=3},
-    [0x8d]={opcode="sta", mode="a", length=3},
+    [0x8d]={opcode="sta", mode="a", length=3, format="sta $<2><1>"},
     [0x8e]={opcode="stx", mode="a", length=3},
     [0x90]={opcode="bcc", mode="r", length=2},
     [0x91]={opcode="sta", mode="(zp),y", length=2},
@@ -207,7 +207,7 @@ asm.set={
     [0x96]={opcode="stx", mode="zp,y", length=2},
     [0x98]={opcode="tya", mode="i", length=1},
     [0x99]={opcode="sta", mode="a,y", length=3},
-    [0x9a]={opcode="txs", mode="i", length=1},
+    [0x9a]={opcode="txs", mode="i", length=1, format="txs"},
     [0x9d]={opcode="sta", mode="a,x", length=3},
     [0xa0]={opcode="ldy", mode="#", length=2, format="ldy #$<1>"},
     [0xa1]={opcode="lda", mode="(zp,x)", length=2},
@@ -241,7 +241,7 @@ asm.set={
     [0xc8]={opcode="iny", mode="i", length=1, format = "iny"},
     
     [0xc9]={opcode="cmp", mode="#", length=2, format = "cmp #$<1>"},
-    [0xca]={opcode="dex", mode="i", length=1, format="dex"},
+    [0xca]={opcode="dex", mode="i", length=1, format ="dex"},
     [0xcc]={opcode="cpy", mode="a", length=3},
     [0xcd]={opcode="cmp", mode="a", length=3},
     [0xce]={opcode="dec", mode="a", length=3},
@@ -249,7 +249,7 @@ asm.set={
     [0xd1]={opcode="cmp", mode="(zp),y", length=2},
     [0xd5]={opcode="cmp", mode="zp,x", length=2},
     [0xd6]={opcode="dec", mode="zp,x", length=2},
-    [0xd8]={opcode="cld", mode="i", length=1},
+    [0xd8]={opcode="cld", mode="i", length=1, format="cld"},
     [0xd9]={opcode="cmp", mode="a,y", length=3},
     [0xdd]={opcode="cmp", mode="a,x", length=3},
     [0xde]={opcode="dec", mode="a,x", length=3},
@@ -261,10 +261,10 @@ asm.set={
     
     [0xe8]={opcode="inx", mode="i", length=1, format = "inx"},
     
-    [0xe9]={opcode="sbc", mode="#", length=2, format = "SBC #$<1>"},
+    [0xe9]={opcode="sbc", mode="#", length=2, format = "sbc #$<1>"},
     [0xea]={opcode="nop", mode="i", length=1, format="nop"},
     [0xec]={opcode="cpx", mode="a", length=3},
-    [0xed]={opcode="sbc", mode="a", length=3},
+    [0xed]={opcode="sbc", mode="a", length=3, format = "sbc $<2><1>"},
     [0xee]={opcode="inc", mode="a", length=3},
     [0xf0]={opcode="beq", mode="r", length=2},
     [0xf1]={opcode="sbc", mode="(zp),y", length=2},
@@ -277,43 +277,89 @@ asm.set={
     ["default"]={opcode="", mode="", length=1, format="undefined"},
 }
 
-asm.print = function(s)
-    local data = hex2bin(s)
+asm.print = function(s, a)
+    local data = asm.util.hex2bin(s)
     local out = ""
     local i = 1
     
-    
     while true do
-        local n = rawToNumber(data:sub(i,i))
+        local n = data:byte(i)
         local s = asm.set[n] or asm.set.default
+        local line = ""
+        
+        line = line .. string.format("%04x ",a+i-1)
         
         for j = 1,3 do
             if j<= s.length then
-                out = out .. string.format("%02x",rawToNumber(data:sub(i+j-1,i+j-1)))
+                line = line .. string.format("%02x ",data:byte(i+j-1))
             else
-                out = out .. "  "
+                line = line .. "  "
             end
         end
+        line = string.sub(line .. string.rep(" ",32),1,32)
+        out = out .. line
         
         --out = out .. string.format(" %s %s",s.opcode, s.mode)
-        
+        local hex=function(n)
+            return string.format("%02x",n or 0)
+        end
+
         local f = ""
+        
+        s.format = s.opcode
+        if s.mode == "i" or s.mode=="A" then
+            s.format = s.opcode
+        elseif s.mode == "#" then
+            s.format = s.opcode .. " #$<1>"
+        elseif s.mode == "a" then
+            s.format = s.opcode .. " $<2><1>"
+        elseif s.mode == "r" then
+            s.format = s.opcode .. " +$<r1>"
+        elseif s.mode == "zp" then
+            s.format = s.opcode .. " $00<1>"
+        elseif s.mode == "a,x" then
+            s.format = s.opcode .. " $<2><1>,x"
+        end
+        
         if s.format then
-            out = out .. " ("
+            --out = out .. " "
             f = s.format
-            f=string.gsub(f, "<1>",bin2hex(data:sub(i+1,i+1)))
-            f=string.gsub(f, "<2>",bin2hex(data:sub(i+2,i+2)))
-            out = out..f..")"
+            f=string.gsub(f, "<1>",hex(data:byte(i+1)))
+            f=string.gsub(f, "<2>",hex(data:byte(i+2)))
+            
+            local n = asm.util.twosCompliment(data:byte(i+1))
+            if n>=0 then
+                f=asm.util.sub(f, "<r1>","-"..hex(math.abs(n)))
+            else
+                f=asm.util.sub(f, "<r1>",hex(math.abs(n)))
+            end
+            
+            f=asm.util.sub(f, "+-","-")
+            f=asm.util.sub(f, "+$-","-$")
+            
+            out = out..f..""
         else
             out = out .. string.format(" %s %s",s.opcode, s.mode)
         end
         out = out .. "\n"
+        if s.opcode == "rts" then
+            out = out .. "----------------------------------------\n"
+            if asm.variables.ASM_BREAK_ON_RTS then break end
+        end
         
         i=i+s.length
         if i>#data then break end
     end
     
     return out
+end
+
+function asm.init(t)
+    if type(t)=="table" then
+        for k,v in pairs(t) do
+            asm[k] = v
+        end
+    end
 end
 
 return asm

@@ -166,6 +166,8 @@ function util.bin2hex(str)
 end
 
 function util.hex2bin(str)
+    str = util.stripSpaces(str)
+    
     local output = ""
     for i = 1, (#str/2) do
         local c = str:sub(i*2-1,i*2)
@@ -178,6 +180,19 @@ function util.hex2bin(str)
     return output
 end
 
+function util.twosCompliment(n)
+    if n>=0x80 then
+        return n-0x100
+    else
+        return n
+    end
+end
+
+function util.sub(s,pattern, replace, n)
+    pattern = string.gsub(pattern, "[%(%)%.%%%+%-%*%?%[%]%^%$]", "%%%0")
+    replace = string.gsub(replace, "[%(%)%.%%%+%-%*%?%[%]%^%$]", "%%%0")
+    return string.gsub(s, pattern, replace, n)
+end
 
 -- return a valid identifier given a string, or nil if it's not valid.
 -- To be a valid "identifier" it must follow these rules:
@@ -214,6 +229,22 @@ function util.deleteFile(f)
     os.remove(f)
 end
 
+-- this is wrong! use below
+function util._rawToNumber(d)
+    -- msb first
+--    local v = 0
+--    for i=1,#d do
+--        v = v * 256
+--        v = v + d:sub(i,i):byte()
+--    end
+--    return v
+    local n=0
+    for i=1,#d do
+        n =n+ d:byte(-i)*16^(i-1)
+    end
+    return n
+end
+
 function util.rawToNumber(d)
     -- msb first
     local v = 0
@@ -223,6 +254,10 @@ function util.rawToNumber(d)
     end
     return v
 end
+
+
+
+
 
 util.serialize = function(t)
     return Tserial.pack(t)
