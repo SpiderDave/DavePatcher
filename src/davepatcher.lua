@@ -2227,6 +2227,15 @@ while true do
                 if util.startsWith(line, "end print") then break end
                 print(line)
             end
+        elseif keyword == "loadasmlist" then
+--            local f = io.open(data, "r")
+--            for line in f:lines() do
+--            end
+            local line = "08A8B 99 0A 03                              sta VRAM_Buffer1+9,y  ;put null terminator at end"
+            
+            print("address: "..string.sub(line, 1,5))
+            print("data: "..string.sub(line, 7,32))
+            print("code: "..util.trim(string.sub(line, 33)))
         elseif util.startsWith(line, "start asm") then
             print("start asm")
             patcher.asmMode = true
