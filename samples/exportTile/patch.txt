@@ -1,0 +1,40 @@
+// Sample script to export a single tile to a .png image.
+//
+// Note: the script may fail on some games.
+
+// Load a NES game defined in config.txt
+include config.txt
+
+// include some common things, including a function to export chr to images.
+include ../../common/default.txt
+
+load %oldFile%
+
+// Offset by 0x10 for the iNES header
+offset 10
+
+// Don't create an output file.
+// This will help avoid an error or unnecessary file
+outputfile none
+
+// Palette we will use for the exported CHR
+palette 0f0c1c3c
+
+CHRSide = 1     // Chr side (0==left, 1==right)
+tileNum = 5     // tile index (00 to ff)
+nTiles = 1      // number of tiles to export
+
+// set ADDRESS to the result of expression
+// notes: expression keyword is a work in progress
+ADDRESS:=expression (%CHRSTART%+%CHRSide%*1000)+10*%tileNum%
+
+//export %CHRSTART%
+palette 0f162718
+export * %nTiles% tile.png
+
+
+
+
+
+:end
+

@@ -2049,6 +2049,8 @@ while true do
             if not address then err("missing export address") end
             if not len then err("missing export length") end
             if not fileName then err("missing export fileName") end
+            
+            fileName = util.trim(fileName)
             --address=tonumber(address,16)
             address = util.toAddress(address)
             len=tonumber(len,16)*16
@@ -2322,6 +2324,15 @@ while true do
             end
             
             local e=data
+            
+            
+            --> = string.gsub("Hello banana", "banana", "Lua user")
+            --Hello Lua user  1
+            e = util.trim(e)
+            e = e:gsub("  ", " ")
+            e = e:gsub(" ", "")
+            
+            
             print("expression:"..e)
             e=calc(e)
             print("result:"..e)
