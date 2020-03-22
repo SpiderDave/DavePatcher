@@ -11,6 +11,10 @@ include ../../common/default.txt
 
 load %oldFile%
 
+if CHRSIZE==0
+    error CHR size is 0.  Most likely the game uses CHR RAM. exportCHR won't work for this game :(
+end if
+
 // Don't create an output file.
 // This will help avoid an error or unnecessary file
 outputfile none

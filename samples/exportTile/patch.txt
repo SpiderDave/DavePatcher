@@ -13,6 +13,10 @@ load %oldFile%
 // Offset by 0x10 for the iNES header
 offset 10
 
+if CHRSIZE==0
+    error CHR size is 0.  Most likely the game uses CHR RAM. exportCHR won't work for this game :(
+end if
+
 // Don't create an output file.
 // This will help avoid an error or unnecessary file
 outputfile none
