@@ -1,0 +1,29 @@
+// Sample script to export all CHR to .png files.
+//
+// Note: the script may take some time depending on
+// how much CHR the game has, and can fail on some games.
+
+// Load a NES game defined in config.txt
+include config.txt
+
+// include some common things, including a function to export chr to images.
+include ../../common/default.txt
+
+load %oldFile%
+
+// Don't create an output file.
+// This will help avoid an error or unnecessary file
+outputfile none
+
+// Offset by 0x10 for the iNES header
+offset 10
+
+// Palette we will use for the exported CHR
+palette 0f0c1c3c
+
+// This is the function from default.txt
+exportCHR()
+
+
+:end
+
