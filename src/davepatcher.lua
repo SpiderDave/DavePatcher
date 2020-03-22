@@ -2262,6 +2262,104 @@ while true do
                 if util.startsWith(line, "end tbl") then break end
             end
         elseif keyword=="expression" then
+            local e = data
+            e = e:gsub(" ", "")
+            print("expression: "..e)
+            
+            -- find innermost parenthesis
+            local f = function(e)
+                
+                -- split up terms by finding words
+                local f2= function(e)
+                    --print("f2 e="..e)
+                    
+                    e = e:gsub("%(","")
+                    e = e:gsub("%)","")
+                    
+--                    local m = e:gmatch("%w+")
+--                    for m2 in m do
+--                        print("m2="..m2)
+--                    end
+                    
+                    -- convert terms to numbers
+                    local f3 = function(e)
+                        --print("f3 e="..e)
+                        -- convert individual term to number or substitute variable
+                        local f4 = function(e)
+                            local ret = util.toNumber(e)
+                            ret = ret or util.toNumber(patcher.variables[e])
+                            if patcher.base == 16 then
+                                ret = string.format("%02x",ret)
+                            else
+                                ret = tostring(ret)
+                            end
+                            --print("ret = "..ret)
+                            return ret
+                        end
+                        
+                        e = e:gsub("%w+", f4)
+                        return e
+                    end
+                    
+                    e = e:gsub("%w+", f3)
+                    return e
+                end
+                
+                e = e:gsub("%([%w%+%-%*%/]+%)", f2)
+                return e
+            end
+            
+            e = "("..e..")"
+            for i=1,100 do
+                local olde=e
+                e = f(e)
+                if e==olde then break end
+            end
+            --print("result after removing parenthesis:"..e)
+            
+            
+--            e = e:gsub("%w+","0x%1")
+--            print(e)
+--            if true then return end
+            
+            local operations = {
+                ["*"]= function(x,y) return x*y end,
+                ["/"]= function(x,y) return x/y end,
+                ["+"]= function(x,y) return x+y end,
+                ["-"]= function(x,y) return x-y end,
+            }
+            
+            for i=1, 1000 do
+                local olde=e
+                for _,op in ipairs{"*","/","+","-"} do
+                    if e:match("%w+[%"..op.."]%w+") then
+                        
+                        --print(e:match("%w+[%"..op.."]%w+"))
+                        
+                        local f = function(m,op,m2)
+                            m = util.toNumber(m, patcher.base)
+                            m2 = util.toNumber(m2, patcher.base)
+                            --printf("m=%s, m2=%s, op=%s",m,m2,op)
+                            local ret = operations[op](m,m2,op)
+                            if patcher.base==16 then
+                                ret = string.format("%02x",ret)
+                            else
+                                ret = tostring(ret)
+                            end
+                            --print("ret="..ret)
+                            return ret
+                        end
+                        
+                        e=e:gsub("(%w+)([%"..op.."])(%w+)",f)
+                        --print("e="..e)
+                    end
+                end
+                if e==olde then break end
+            end
+            
+            print("result:"..e)
+            
+        elseif keyword=="expressionold" then
             local calc= function(e)
                 e="("..e..")"
                 printVerbose("e="..e)
@@ -2279,7 +2377,16 @@ while true do
                     --print(m..op..m2)
                     if m and m2 then
                         local f = operations[op]
-                        return string.format("%x", f(util.toNumber(m),util.toNumber(m2)))
+                        
+                        -- Here let's make sure we have a number.
+                        -- If not, check if it's a variable
+                        -- probably should factor in scrit options
+                        -- and do some testing.
+                        local x = util.toNumber(m)
+                        local y = util.toNumber(m2)
+                        x=x or patcher.variables[m]
+                        y=y or patcher.variables[m2]
+                        return string.format("%x", f(x,y))
                     else
                         return e
                     end
@@ -2287,8 +2394,9 @@ while true do
 
                 local calc2 = function(e)
                     local m = e:match("^.[%w%*%-%+%/]-$")
+                    --local m = e:match("^.[%w%*%/%+%-]-$")
                     if m then
-                        --print("  matched:"..m)
+                        print("  matched:"..m)
                         for _,op in ipairs{"*","/","+","-"} do
                             for _=1,15 do
                                 local m= e:match("%w+[%"..op.."]%w+")
@@ -2305,7 +2413,7 @@ while true do
                 for _=1,15 do
                     local m = e:match("%((.[^%(%)]-)%)")
                     if m then
-                        --print("match:"..m)
+                        print("match:"..m)
                         e=e:gsub("%((.[^%(%)]-)%)", "("..calc2(m)..")")
                         printVerbose("e="..e)
                     end
@@ -2325,13 +2433,8 @@ while true do
             
             local e=data
             
-            
-            --> = string.gsub("Hello banana", "banana", "Lua user")
-            --Hello Lua user  1
-            e = util.trim(e)
-            e = e:gsub("  ", " ")
+            -- remove all spaces (causes problem if spaces are left in)
             e = e:gsub(" ", "")
-            
             
             print("expression:"..e)
             e=calc(e)
