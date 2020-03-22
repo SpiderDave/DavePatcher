@@ -29,16 +29,16 @@ tileNum = 5     // tile index (00 to ff)
 nTiles = 1      // number of tiles to export
 
 // set ADDRESS to the result of expression
-// notes: expression keyword is a work in progress
-ADDRESS:=expression (%CHRSTART%+%CHRSide%*1000)+10*%tileNum%
+//
+// Note: expression will attempt to check for variables when 
+// something doesn't seem to be a number, so you can leave off the %.
+// Just be careful if you use a variable name that can also be a
+// hexidecimal number, such as "beef" or "c".  In that case, use 
+// "%beef%" and "%c%".
+ADDRESS:= expression CHRSTART + CHRSide*1000 + 10*tileNum
 
-//export %CHRSTART%
 palette 0f162718
 export * %nTiles% tile.png
-
-
-
-
 
 :end
 

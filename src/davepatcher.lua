@@ -1443,7 +1443,7 @@ while true do
         if util.split(line or "",":=",1)[2] then
             fillVar = util.split(line,":=",1)[1]
             --data = util.split(line,":=",1)[2]
-            line = util.split(line,":=",1)[2]
+            line = util.ltrim(util.split(line,":=",1)[2])
             local opt
             line, opt = patch.parseLine(line)
             keyword = opt.keyword
