@@ -2358,6 +2358,7 @@ while true do
             end
             
             print("result:"..e)
+            patcher.variables.RET = util.toNumber(e)
             
         elseif keyword=="expressionold" then
             local calc= function(e)
