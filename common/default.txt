@@ -43,3 +43,17 @@ end function
 start function exists()
     exist %PARAM%-->RET
 end function
+
+// set current address to the address of a tile
+start function tileAddress(side tileNum)
+    RET:=expression CHRSTART + side*1000  + 10*tileNum
+    address %RET%
+end function
+
+// get tile data given the chr side, tile number and number of tiles
+start function getTileData(side tileNum nTiles)
+    ADDRESS:=expression CHRSTART + side*1000  + 10*tileNum
+    
+    len:= expression nTiles*10
+    RET:=get * %len%
+end function
