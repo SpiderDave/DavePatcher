@@ -1033,6 +1033,30 @@ function imageToTile(len, fileName)
     return tileData
 end
 
+function getNearestColor(c, colors)
+    function colorDistance(c1, c2)
+        rDiff = c1[0] - c2[0]
+        gDiff = c1[1] - c2[1]
+        bDiff = c1[2] - c2[2]
+        
+        return math.sqrt(rDiff * rDiff + gDiff * gDiff + bDiff * bDiff)
+    end
+
+    local shortestIndex = 0
+    local shortestDistance = colorDistance(c, colors[0])
+    for i = 1, #colors do
+        local d
+        --print(string.format("%02x%02x%02x %02x%02x%02x",c[0],c[1],c[2], colors[i][0],colors[i][1],colors[i][2]))
+        d = colorDistance(c, colors[i])
+        if d<shortestDistance then
+            shortestDistance = d
+            shortestIndex = i
+        end
+    end
+
+    return shortestIndex, shortestDistance
+end
+
 function imageToTile3(tileMap, fileName)
     local tm=patcher.tileMap[tileMap]
     local out = {
@@ -1067,7 +1091,31 @@ function imageToTile3(tileMap, fileName)
             out[y+8] = 0
             for x=0, 7 do
                 local r,g,b = graphics:getPixel(image, x+xo+tilemapX, y+yo+tilemapY)
-                for i=0,3 do
+                for i=0,4 do
+                    if i == 4 then -- No colors matched, use nearest
+                        local c = {[0]=r,g,b}
+                        
+                        -- generate a list of colors to match to
+                        local colors = {}
+                        for j = 0, #patcher.colors do
+                            local c2 = patcher.palette[patcher.colors[j]]
+                            colors[j] = {[0]=c2[1],c2[2],c2[3]}
+                        end
+                        
+                        -- nearest will be the index of the match.
+                        -- We can use this for our palette index
+                        -- since it will be the same.
+                        local nearest = getNearestColor(c, colors)
+                        
+                        local r2,g2,b2 = table.unpack(patcher.palette[patcher.colors[nearest]])
+                        --print(string.format("nearest color index for %02x%02x%02x: %02x (%02x%02x%02x)",r,g,b,nearest, r2,g2,b2))
+                        
+                        -- use nearest here in place of i for the index
+                        out[y]=out[y] + (2^(7-x)) * (nearest%2)
+                        out[y+8]=out[y+8] + (2^(7-x)) * (math.floor(nearest/2))
+
+                        break
+                    end
                     local pr,pg,pb = table.unpack(patcher.palette[patcher.colors[i]])
                     if string.format("%02x%02x%02x",r,g,b) == string.format("%02x%02x%02x",pr,pg,pb) then
                         out[y]=out[y] + (2^(7-x)) * (i%2)
