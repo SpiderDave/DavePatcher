@@ -1140,7 +1140,16 @@ function imageToTile3(tileMap, fileName)
             end
         else
             for j=0,#tileImageData do
-                o=o..string.char(tileImageData[j])
+                if tileImageData[j]>=0x100 then
+                    print(string.format("%02x %02x (%02x,%02x)",j, tileImageData[j], tm[i].realX, tm[i].realY))
+                    --o=o..string.char(math.floor(tileImageData[j] / 0x100))
+                    --o=o..string.char(tileImageData[j] % 0x100)
+                    
+                else
+                    o=o..string.char(tileImageData[j])
+                end
+                
+                
             end
         end
         
@@ -2051,9 +2060,9 @@ while true do
             if not fileName then err("missing export fileName") end
             
             fileName = util.trim(fileName)
-            --address=tonumber(address,16)
             address = util.toAddress(address)
-            len=tonumber(len,16)*16
+            --len=tonumber(len,16)*16
+            len=util.toNumber(len,16)*16
             print(string.format("exporting tile data at 0x%08x",address))
             
             tileData = patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+len)
@@ -2130,7 +2139,9 @@ while true do
             local dummy, address,len,fileName=unpack(util.split(line," ",3))
             --address=tonumber(address,16)
             address = util.toAddress(address)
-            len=tonumber(len,16)*16
+            --len=tonumber(len,16)*16
+            len=util.toNumber(len,16)*16
+            --printf("%02x",len)
             
             print(string.format("importing tile data at 0x%08x",address))
             local tileData = imageToTile(len, fileName)
