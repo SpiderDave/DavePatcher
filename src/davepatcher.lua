@@ -1072,6 +1072,9 @@ function imageToTile3(tileMap, fileName)
                     if string.format("%02x%02x%02x",r,g,b) == string.format("%02x%02x%02x",pr,pg,pb) then
                         out[y]=out[y] + (2^(7-x)) * (i%2)
                         out[y+8]=out[y+8] + (2^(7-x)) * (math.floor(i/2))
+                        -- need this break here to avoid having this happen twice for the same pixel
+                        -- in cases where we have two colors that are the same.  sneaky bug.
+                        break
                     end
                 end
             end
@@ -1140,16 +1143,7 @@ function imageToTile3(tileMap, fileName)
             end
         else
             for j=0,#tileImageData do
-                if tileImageData[j]>=0x100 then
-                    print(string.format("%02x %02x (%02x,%02x)",j, tileImageData[j], tm[i].realX, tm[i].realY))
-                    --o=o..string.char(math.floor(tileImageData[j] / 0x100))
-                    --o=o..string.char(tileImageData[j] % 0x100)
-                    
-                else
-                    o=o..string.char(tileImageData[j])
-                end
-                
-                
+                o=o..string.char(tileImageData[j])
             end
         end
         
