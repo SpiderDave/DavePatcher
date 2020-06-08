@@ -659,3 +659,116 @@ start tilemap door
 
 end tilemap
 
+
+
+start tilemap Mario_select1
+    gridsize = 1
+    address = 2c000
+    palette = 0f271601
+    00 00 00
+    01 00 08
+    00 08 00 h
+    01 08 08 h
+    02 00 10
+    03 00 18
+    02 08 10 h
+    03 08 18 h
+end tilemap
+
+start tilemap Mario_select2
+    gridsize = 1
+    address = 2c000
+    palette = 0f271601
+    10 00 00
+    11 00 08
+    12 08 00
+    13 08 08
+    14 00 10
+    15 00 18
+    16 08 10
+    17 08 18
+end tilemap
+
+start tilemap Luigi_select1
+    gridsize = 1
+    address = 2c000
+    palette = 0f362a01
+    04 00 00
+    05 00 08
+    04 08 00 h
+    05 08 08 h
+    06 00 10
+    07 00 18
+    06 08 10 h
+    07 08 18 h
+end tilemap
+
+start tilemap Luigi_select2
+    gridsize = 1
+    address = 2c000
+    palette = 0f362a01
+    18 00 00
+    19 00 08
+    1a 08 00
+    1b 08 08
+    1c 00 10
+    1d 00 18
+    1e 08 10
+    1f 08 18
+end tilemap
+
+start tilemap Toad_select1
+    gridsize = 1
+    address = 2c000
+    palette = 0f273001
+    08 00 00
+    09 00 08
+    08 08 00 h
+    09 08 08 h
+    0a 00 10
+    0b 00 18
+    0a 08 10 h
+    0b 08 18 h
+end tilemap
+
+start tilemap Toad_select2
+    gridsize = 1
+    address = 2c000
+    palette = 0f273001
+    20 00 00
+    21 00 08
+    22 08 00
+    23 08 08
+    24 00 10
+    25 00 18
+    26 08 10
+    27 08 18
+end tilemap
+
+start tilemap Princess_select1
+    gridsize = 1
+    address = 2c000
+    palette = 0f362507
+    0c 00 00
+    0d 00 08
+    0c 08 00 h
+    0d 08 08 h
+    0e 00 10
+    0f 00 18
+    0e 08 10 h
+    0f 08 18 h
+end tilemap
+
+start tilemap Princess_select2
+    gridsize = 1
+    address = 2c000
+    palette = 0f362507
+    28 00 00
+    29 00 08
+    2a 08 00
+    2b 08 08
+    2c 00 10
+    2d 00 18
+    2e 08 10
+    2f 08 18
+end tilemap
