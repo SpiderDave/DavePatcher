@@ -354,5 +354,11 @@ function util.replace(text, old, new, n)
     return text
 end
 
+function util.contains(list, item)
+    for k, v in pairs(list) do
+        if v == item then return true end
+    end
+    return false
+end
 
 return util
