@@ -110,6 +110,7 @@ local patcher = {
         BITOPER="NORMAL",
         REPLACELIMIT = 50,
         DELIM = " ",
+        INCLUDEONCE=true,
     },
     autoRefresh = false,
     outputFileName = "output.nes",
@@ -119,6 +120,7 @@ local patcher = {
     textMaps = {
         current = "default",
     },
+    includeList = {},
 }
 
 -- Initialize to an empty file
@@ -535,6 +537,8 @@ util.sandbox.context = {
     atan2 = math.atan2,
     cos = math.cos,
     
+    type=type,
+    
     util=util,
     patcher=patcher,
 }
@@ -677,6 +681,10 @@ function patcher.replaceVariables(line)
     patcher.variables["GD"] = gd and "true" or "false"
     
     patcher.variables["PALETTE"] = string.format("%02x%02x%02x%02x", patcher.colors[0],patcher.colors[1],patcher.colors[2],patcher.colors[3])
+    
+--    if patcher.variables.FOR_IN_VAR then
+--        patcher.variables[patcher.variables.FOR_IN_TEMPVAR] = patcher.variables[patcher.variables.FOR_IN_VAR][patcher.variables.INDEX]
+--    end
     
     -- using a closure thing here
     local f = function(k)
@@ -1557,6 +1565,16 @@ while true do
             for i,v in ipairs(util.split(data,patcher.variables.DELIM)) do
                 patcher.variables['SPLIT'..string.format("%x",i)] = v
             end
+        elseif keyword == "splitarray" then
+            local var = util.split(data, " ")[1]
+            local newVar = util.split(data, " ")[2]
+            
+            printf("Splitting %s to array %s",var,newVar)
+            local t = {}
+            for i,v in ipairs(util.split(patcher.variables[var],patcher.variables.DELIM)) do
+                t[i-1] = v
+            end
+            patcher.variables[newVar] = t
         elseif keyword == "join" then
             local ret = ""
             for k,v in ipairs(util.split(data,patcher.variables.DELIM)) do
@@ -1632,6 +1650,19 @@ while true do
                 printf("%s off", keyword)
             end
         elseif keyword == "include" then
+            once = patcher.variables.INCLUDEONCE -- Defaults to true
+            noInclude = false
+            
+            -- "once" and "multi" override INCLUDEONCE
+            if util.split(util.ltrim(data), " ",1)[1]=="once" then
+                data = util.split(util.ltrim(data), " ",1)[2]
+                once=true
+            end
+            if util.split(util.ltrim(data), " ",1)[1]=="multi" then
+                data = util.split(util.ltrim(data), " ",1)[2]
+                once=false
+            end
+
 --            print(love.filesystem.getSourceBaseDirectory( ))
             local path = love.filesystem.getWorkingDirectory( )
             --print("include path: ",path)
@@ -1648,24 +1679,33 @@ while true do
                 --f = path.."/"..f
             end
             
-            
-            while util.startsWith(f, "../") do
-                f = util.split(f,"../",1)[2]
-                path=util.upFolder(path)
+            if util.contains(patcher.includeList, f) then
+                if once==true then noInclude = true end
+            else
+                table.insert(patcher.includeList,f)
             end
-            f = path.."/"..f
+            
+            if noInclude then
+                printVerbose("file already included: "..f)
+            else
+                while util.startsWith(f, "../") do
+                    f = util.split(f,"../",1)[2]
+                    path=util.upFolder(path)
+                end
+                f = path.."/"..f
 
-            local i = patch.index
-            
-            local lines = patch.load(f, {returnOnly=true})
-            for k,v in pairs(lines) do
-              table.insert(patch.lines, i, v)
-              --printf("line[%02x] [%s]",k,v)
-              i=i+1
+                local i = patch.index
+                
+                local lines = patch.load(f, {returnOnly=true})
+                for k,v in pairs(lines) do
+                  table.insert(patch.lines, i, v)
+                  --printf("line[%02x] [%s]",k,v)
+                  i=i+1
+                end
+    --            for k,v in pairs(patch.lines) do
+    --              printf("line[%02x] [%s]",k,v)
+    --            end
             end
---            for k,v in pairs(patch.lines) do
---              printf("line[%02x] [%s]",k,v)
---            end
 
         elseif keyword == "help" then
             print(patcher.help.interactive)
@@ -2244,6 +2284,19 @@ while true do
                 end
             end
             --print(string.format("skipped %d lines.", nSkipped-1))
+        elseif keyword=="for" then
+            -- for tempVar in var do
+            local tempVar = util.split(data, " in ")[1]
+            local var = util.split(data, " in ")[2]
+            var = util.split(var, " do")[1]
+            patcher.variables.LOOPEND = #patcher.variables[var]
+            patch.loopStack:push(patch.index)
+            patcher.variables.INDEX = 0
+            patcher.variables.FOR_IN_VAR = var
+            patcher.variables.FOR_IN_TEMPVAR = tempVar
+            
+            
+            patcher.variables[tempVar] = patcher.variables[var][0]
         elseif util.startsWith(line, "start loop") then
             if util.split(line, "start loop",1)[2] then
                 patcher.variables.LOOPEND = util.toNumber(util.split(line, "start loop",1)[2])
@@ -2254,10 +2307,10 @@ while true do
             --printf("start loop %s",patch.index)
             patch.loopStack:push(patch.index)
             patcher.variables.INDEX = 1
-            
         elseif util.startsWith(line, "end loop") then
             --local i=patch.loopStack:pop()
             local i=patch.loopStack:last()
+            
             --printf("end loop %s %s %s",i,patch.index,patch.lines[i])
             
             if patcher.variables.LOOPEND and (patcher.variables.INDEX >= patcher.variables.LOOPEND) then
@@ -2265,7 +2318,12 @@ while true do
             else
                 patcher.variables.INDEX = (patcher.variables.INDEX or 1)+ 1
                 patch.index = i
+                
             end
+            if patcher.variables.FOR_IN_VAR then
+                patcher.variables[patcher.variables.FOR_IN_TEMPVAR] = patcher.variables[patcher.variables.FOR_IN_VAR][patcher.variables.INDEX]
+            end
+
             --patcher.variables.RET = patcher.variables.INDEX
             --patcher.variables.INDEX = 1
             --line = patch.readLine()
@@ -2586,6 +2644,20 @@ while true do
             else
                 err("Invalid default data type: %s",t)
             end
+        elseif (keyword == "array") or (keyword == "var" and patcher.variables.DEFTYPE=="array") then
+            local k,v = table.unpack(util.split(data, "=", 1))
+            k,v = util.trim(k), util.trim(v)
+            local arrayIndex = util.toNumber(util.split(util.split(k,"[")[2], "]")[1])
+            k= util.split(k,"[")[1]
+            
+            if type(patcher.variables[k] or 0) ~= "table" then
+                patcher.variables[k] = {}
+            end
+            
+            printf("array set: %s(%s) %s",k,arrayIndex, v)
+            --patcher.variables[k] = v
+            patcher.variables[k][arrayIndex]=v
+            printVerbose('Variable: %s = "%s"', k, v)
         elseif (keyword == "str") or (keyword == "var" and patcher.variables.DEFTYPE=="str") then
             local k,v = table.unpack(util.split(data, "=", 1))
             k,v = util.trim(k), util.trim(v)
@@ -3253,7 +3325,21 @@ while true do
         elseif util.startsWith(line, ":") then
             -- label, pass.
         elseif (assignment == true) and (patcher.strict~=true) then
-            if patcher.variables.DEFTYPE=="str" then
+            local k,v = util.trim(keyword), util.trim(data)
+            if #util.split(k,"[")>1 then
+                -- it's an array
+                    local arrayIndex = util.toNumber(util.split(util.split(k,"[")[2], "]")[1])
+                    k= util.split(k,"[")[1]
+                    
+                    if type(patcher.variables[k] or 0) ~= "table" then
+                        patcher.variables[k] = {}
+                    end
+                    
+                    printf("array set: %s(%s) %s",k,arrayIndex, v)
+                    --patcher.variables[k] = v
+                    patcher.variables[k][arrayIndex]=v
+                    --printVerbose('Variable: %s = "%s"', k, v)
+            elseif patcher.variables.DEFTYPE=="str" then
                 patcher.variables[keyword] = util.ltrim(data)
                 printVerbose('Variable: %s = "%s"', keyword, util.ltrim(data))
             elseif patcher.variables.DEFTYPE=="num" then
