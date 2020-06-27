@@ -1,0 +1,12 @@
+oldFile = ../../backup/River City Ransom (USA).nes
+
+//newFile = RCR New.nes
+newFile = RCR New.ips
+
+//cheats = true
+
+// This will enable "2P PLAY B" from the Japanese version
+// as a hidden option.  This mode lets you play two player
+// without damaging each other.  To access it, press down
+// when "2P PLAY" is selected.
+enableModeB = true

@@ -1,0 +1,359 @@
+/*
+    Improved font
+    Un-justified password screen items
+    Corrected player palette on select screen
+    Localized Easter Egg Portraits 
+    Fixed spelling: "Excaliber" --> "Excalibur"
+    Fixed capitalization: "Read All About IT" --> "Read All About It"
+    Fixed capitalization: "OAK Hill" --> "Oak Hill"
+    Improved palette of Technos intro
+    
+    2018-8-31
+    Moved lowercase r one pixel to the right
+    fixed tiles on Capitol Ave. Bridge
+    
+*/
+
+textmap 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz f4f5f6f7f8f9fafbfcfdc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3
+textmap ,!."?-:$%&'* bab2b6b1b3b4b7feb5b93ab0
+textmap space 00
+// This is actually newline stuff
+textmap > 05
+textmap / 06
+// used at end of line on book descriptions, for example
+textmap \ 0a
+// placeholder for player name
+textmap @ 01
+// placeholder for book/item name
+textmap ~ 02
+
+push variables
+offset 10
+
+palette 0f182737
+//export 20b00 50 RCRFont.png
+//export 3fbe0 02 RCRHp2.png
+
+//export 38100 100 RCRportraits.png
+palette 0f172730
+//export map portrait1 RCR_portrait1.png
+import map portrait1 RCR_portrait1_new.png
+palette 0f022730
+//export map portrait2 RCR_portrait2.png
+import map portrait2 RCR_portrait2_new.png
+
+// Correct palette on player select screen
+// * The pants use lighter shade than in game and other menus
+// * The skin tone is different than in game and other menus
+put 1e929 0c0f1126
+put 1e92d 0c0f2630
+
+// change first screen music when re-entering it
+//put 1f057 00
+
+// Player 1 default name (ALEX )
+text 1f839 Alex 
+// Player 2 default name (RYAN )
+text 1f83e Ryan 
+
+//find text SLICK
+// "SLICK" on intro story screen
+//text 3b509 SlicK
+//text 3b794 SLick // ?
+
+# Excaliber
+// Fix spelling mistake
+text aa7f Excalibur
+
+# Read All/About IT
+// No need for the last letter to be capitalized
+text 9c87 Read All/About It
+
+# OAK Hill
+// No need to capitalize whole first word
+text f8f9 Oak Hill
+
+
+//Palette of intro "PRESENTS"
+put 1e9d9 0f122000
+
+// Palette of intro "TECHNOS JAPAN corp"
+put 1e9e1 0f120200
+
+// Asterix character
+//find 442810fe10284400442810fe10284400
+// Asterix character (different background)
+//find 442810fe10284400ffffffffffffffff
+
+palette 0f182737
+import 20b00 50 RCRFontNew.png
+
+#copy modified font to all areas
+refresh
+copy 20b00 21b00 500
+copy 20b00 22b00 500
+copy 20b00 23b00 500
+copy 20b00 24b00 500
+//copy 20b00 25b00 500 // <-- Do not do this, there's code here, not graphics!
+copy 20b00 26b00 500
+copy 20b00 27b00 500
+copy 20b00 28b00 500
+copy 20b00 29b00 500
+copy 20b00 2ab00 500
+copy 20b00 2bb00 500
+copy 20b00 2cb00 500
+copy 20b00 2db00 500
+copy 20b00 2eb00 500
+copy 20b00 2fb00 500
+
+# This last one has a different background color so we have to do some modifications after the copy
+copy 20b00 3fb00 500
+put 3fb08 ffffffffffffffff
+put 3fb18 ffffffffffffffff
+put 3fb28 ffffffffffffffff
+put 3fb38 ffffffffffffffff
+put 3fb48 ffffffffffffffff
+put 3fb58 ffffffffffffffff
+put 3fb68 ffffffffffffffff
+put 3fb78 ffffffffffffffff
+put 3fb88 ffffffffffffffff
+put 3fb98 ffffffffffffffff
+put 3fba8 ffffffffffffffff
+put 3fbb8 ffffffffffffffff
+put 3fbc8 ffffffffffffffff
+put 3fbd8 ffffffffffffffff
+put 3fbe8 ffffffffffffffff
+put 3fbf8 ffffffffffffffff
+put 3fc08 ffffffffffffffff
+put 3fc18 ffffffffffffffff
+put 3fc28 ffffffffffffffff
+put 3fc38 ffffffffffffffff
+put 3fc48 ffffffffffffffff
+put 3fc58 ffffffffffffffff
+put 3fc68 ffffffffffffffff
+put 3fc78 ffffffffffffffff
+put 3fc88 ffffffffffffffff
+put 3fc98 ffffffffffffffff
+put 3fca8 ffffffffffffffff
+put 3fcb8 ffffffffffffffff
+put 3fcc8 ffffffffffffffff
+put 3fcd8 ffffffffffffffff
+put 3fce8 ffffffffffffffff
+put 3fcf8 ffffffffffffffff
+put 3fd08 ffffffffffffffff
+put 3fd18 ffffffffffffffff
+put 3fd28 ffffffffffffffff
+put 3fd38 ffffffffffffffff
+put 3fd48 ffffffffffffffff
+put 3fd58 ffffffffffffffff
+put 3fd68 ffffffffffffffff
+put 3fd78 ffffffffffffffff
+put 3fd88 ffffffffffffffff
+put 3fd98 ffffffffffffffff
+put 3fda8 ffffffffffffffff
+put 3fdb8 ffffffffffffffff
+put 3fdc8 ffffffffffffffff
+put 3fdd8 ffffffffffffffff
+put 3fde8 ffffffffffffffff
+put 3fdf8 ffffffffffffffff
+put 3fe08 ffffffffffffffff
+put 3fe18 ffffffffffffffff
+put 3fe28 ffffffffffffffff
+put 3fe38 ffffffffffffffff
+put 3fe48 ffffffffffffffff
+put 3fe58 ffffffffffffffff
+put 3fe68 ffffffffffffffff
+put 3fe78 ffffffffffffffff
+put 3fe88 ffffffffffffffff
+put 3fe98 ffffffffffffffff
+put 3fea8 ffffffffffffffff
+put 3feb8 ffffffffffffffff
+put 3fec8 ffffffffffffffff
+put 3fed8 ffffffffffffffff
+put 3fee8 ffffffffffffffff
+put 3fef8 ffffffffffffffff
+put 3ff08 ffffffffffffffff
+put 3ff18 ffffffffffffffff
+put 3ff28 ffffffffffffffff
+put 3ff38 ffffffffffffffff
+put 3ff48 ffffffffffffffff
+put 3ff58 ffffffffffffffff
+put 3ff68 ffffffffffffffff
+put 3ff78 ffffffffffffffff
+put 3ff88 ffffffffffffffff
+put 3ff98 ffffffffffffffff
+put 3ffa8 ffffffffffffffff
+put 3ffb8 ffffffffffffffff
+put 3ffc8 ffffffffffffffff
+put 3ffd8 ffffffffffffffff
+put 3ffe8 ffffffffffffffff
+put 3fff8 ffffffffffffffff
+
+// re-import hp bars for different background color set
+import 3fbe0 02 RCRHp2.png
+
+// This is "BACK" on the password screen
+// Normally, it uses 3 tiles for "AC" to justify the text.
+// We'll change it to use the standard tiles instead.
+put 394ad c1c0c2ca00
+put 395b0 c1c0c2ca00
+
+// "SWAP" same as above
+put 39602 d2d6c0cf00
+
+// "E N D" on the password screen
+// Since we un-justified the other text,
+// this looks out of place now.
+put 394ff c4cdc30000
+put 3962b c4cdc30000
+
+
+// fix the two tiles that don't match on top row of water on Capitol Ave. Bridge
+put 1c7c 4e
+put 1e7a 4e
+
+// fix the second row of water on left side of Capitol Ave. Bridge to match the rest
+put 1a89 5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f
+
+
+//07:cb41 ad7006 LDA $0670 = #$01 message speed read thing
+// change to point to new subroutine below
+//put 1cb41 2092cf
+
+skip
+    # hijack something that'll be in main loop
+    //find bdcb00
+    //07:ed2c bdcb00
+    //put 1ed2c 2092cf
+
+    # empty space
+    // new subroutine
+    //07:cf92-07:cfff
+    //1cfa2-1d00f
+    // a9709dbf = set hp
+    put 1cf92 a9709dbf04bdcb0060
+
+    put 1cf92 a5ee2908f003eebf04bdcb0060
+    put 1cf92 a5ee494429bbf004a9ff8561bdcb0060
+end skip
+
+//put 00020000 40404040004000004040404000400000
+//export 20000
+
+//refresh
+
+//palette 0f182737
+//export 20000 100 tiles20010.png
+
+//import 20000 100 test.png
+
+//export 21000 100 tiles21010.png
+//export 22000 100 tiles22010.png
+//export 20000 4000 tiles.png
+
+//text 1f8b1 Belongings
+//text 1f8be Password
+//text 1f8c9 Level
+//text 1f8d1 Status
+//text 1f8da Help
+
+// Help screen stuff:
+# BELONGINGS- This screen lets
+# you know what items you have
+# left and how to use them.
+
+// repeat 0xa2 times, text character 0x00
+//put 3b552 a2005c
+
+//text 3b555 BELONGINGS- This screen lets
+
+//repeat 0x24 times, text character 0x00
+//put 3b571 24005c
+
+//text 3b574 you know what items you have
+//text 3b593 left and how to use them.
+
+//repeat 20
+//_corrupt
+//end
+
+// remove top bar drawing routine
+//put 1fae3 2078ba-->eaeaea
+//put 1fae3 eaeaea
+
+//put 1f2ab eaeaea
+
+// main loop?  various routines ****************
+// 20d4ef sprite drawing
+// 20e2df sprite cleanup
+// 200080 update all characters (players, enemies)
+// 2095e0 update screen scrolling stuff
+// 20e9fa update screen scrolling stuff (nametable scroll thing)
+// 20a2e2 update object positions to account for scrolling
+// 209afa update object collision with other objects (hitting each other)
+// 2007fb update doors
+// 20d6fa update bottom messages (dying, turf notices)
+// 20dafa update top bar
+// 20b0fb update area transitions (can't leave screen)
+// 2043e3 update palettes? screen is black without it
+// 20edf2 start menu handler
+// eaeaea (no operation)
+// 20bffb needed to redraw top bar after using item in start menu
+// 20ddf3 death handler (nothing happens after you flash and die or fall in pit)
+// 20a1fb level loader? without it you can't exit screen, it just fades out continuously
+// 20b8fa shop loader? without it you can't enter shop, it just fades out continuously
+//put 1f293 20d4ef 20e2df 200080 2095e0 20e9fa 20a2e2 209afa 2007fb 20d6fa 20dafa 20b0fb 2043e3 20edf2 eaeaea 20bffb 20ddf3 20a1fb 20b8fa
+
+
+
+
+skip
+ 07:F293:20 D4 EF  JSR $EFD4
+ 07:F296:20 E2 DF  JSR $DFE2
+ 07:F299:20 00 80  JSR $8000
+ 07:F29C:20 95 E0  JSR $E095
+ 07:F29F:20 E9 FA  JSR $FAE9
+ 07:F2A2:20 A2 E2  JSR $E2A2
+ 07:F2A5:20 9A FA  JSR $FA9A
+ 07:F2A8:20 07 FB  JSR $FB07
+>07:F2AB:20 D6 FA  JSR $FAD6
+ 07:F2AE:20 DA FA  JSR $FADA
+ 07:F2B1:20 B0 FB  JSR $FBB0
+ 07:F2B4:20 43 E3  JSR $E343
+ 07:F2B7:20 ED F2  JSR $F2ED
+ 07:F2BA:EA        NOP
+ 07:F2BB:EA        NOP
+ 07:F2BC:EA        NOP
+ 07:F2BD:20 BF FB  JSR $FBBF
+ 07:F2C0:20 DD F3  JSR $F3DD
+ 07:F2C3:20 A1 FB  JSR $FBA1
+ 07:F2C6:20 B8 FA  JSR $FAB8
+end skip
+
+//tiles for alex/ryan body (and others)
+//put cec7 000000000000
+
+//some palette data for Alex (and others?)
+//put ced0 000000000000010101010101000000
+//some palete data for Ryan (and others)
+//put cedf 000001010101000000000000030303
+
+//       000000000000010101010101000000
+//put ced0 000000010101010101010101000000
+
+
+// "the end" graphics on ending
+//put 1bdf5 dadadadadada c0c1c2c3c4c5c6c7c8c9cacbcdcecf  dadadadadada c0c1c2c3c4c5c6c7c8c9cacbcdcecf dadadadadada
+
+if enableModeB
+    put 1f5ab c903 // enable 2p mode B
+
+    copy 1f641 1ffe9 04 // copy nametable addresses for 1P PLAY, 2P PLAY arrow positions
+    put 1ffed 6b21 // new arrow position for third option (2p mode B)
+
+    // change pointers for above
+    put 1f5ef eaff
+    put 1f5f5 e9ff
+end if
+
+pop variables

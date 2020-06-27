@@ -1,0 +1,24 @@
+// patch for "River City Ransom (USA).nes"
+
+include config.txt
+include tilemaps.txt
+
+load %oldFile%
+
+offset 10 // Offset by 0x10 for the iNES header
+
+include improvement.txt
+
+if cheats==true
+    # Start with 999.00
+    put 1F703 99
+    put 1f708 99
+    put 1f70D 09
+
+    put 1F712 99
+    put 1f717 99
+    put 1f71c 09
+end if
+
+:end
+save %newFile%
