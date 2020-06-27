@@ -1,4 +1,4 @@
-# patch for "Super Mario Bros. 2 (USA).nes"
+# patch for "Super Mario Bros. 2 (USA) (Rev A).nes"
 
 include config.txt
 
@@ -7,6 +7,27 @@ load %oldFile%
 offset 10
 include tilemaps.txt
 include improvement.txt
+
+if exportGraphics
+    exportFile = characters.png
+    palette auto // use preferred palettes defined in the tilemaps
+    export map 00 00 Mario %exportFile%
+    export map 00 20 Mario_small %exportFile%
+    export map 00 40 Luigi %exportFile%
+    export map 00 60 Luigi_small %exportFile%
+    export map 00 80 Princess %exportFile%
+    export map 00 a0 Princess_small %exportFile%
+    export map 00 c0 Toad %exportFile%
+    export map 00 e0 Toad_small %exportFile%
+    export map 90 00 Mario_select1 %exportFile%
+    export map a0 00 Mario_select2 %exportFile%
+    export map 90 20 Luigi_select1 %exportFile%
+    export map a0 20 Luigi_select2 %exportFile%
+    export map 90 40 Princess_select1 %exportFile%
+    export map a0 40 Princess_select2 %exportFile%
+    export map 90 60 Toad_select1 %exportFile%
+    export map a0 60 Toad_select2 %exportFile%
+end if
 
 :end
 print Build: %build%

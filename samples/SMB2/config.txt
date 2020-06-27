@@ -7,3 +7,5 @@ newFile = SMB2 Improvement.ips
 build=test
 
 //cheats = true
+
+exportGraphics = false
