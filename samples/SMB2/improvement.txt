@@ -84,3 +84,7 @@ put 1fb36 a9088d0306ad022010fba9808d010660
 //  a980 ; lda #$80 load the value for the death sound effect
 //  8d0106 ;sta $0601 store it in the dpcm queue
 // 60 ;rts return from subroutine
+
+// Adjust Mario's skin tone
+put 1442a 011636 // Mario palette
+put 1e0d9 361601 // Mario palette (select screen)
