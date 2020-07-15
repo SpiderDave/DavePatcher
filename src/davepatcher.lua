@@ -115,6 +115,7 @@ local patcher = {
     autoRefresh = false,
     outputFileName = "output.nes",
     strict=false,
+    expr=false,
     breakLoop=false,
     tbl={},
     textMaps = {
@@ -297,6 +298,105 @@ patcher.getHex = function(address, len)
     return bin2hex(patcher.fileData:sub(address+1+patcher.offset,address+patcher.offset+len))
 end
 
+patcher.doExpression = function(e)
+    original = e
+    e = e:gsub(" ", "")
+    --print("expression: "..e)
+    
+    -- find innermost parenthesis
+    local f = function(e)
+        
+        -- split up terms by finding words
+        local f2= function(e)
+            --print("f2 e="..e)
+            
+            e = e:gsub("%(","")
+            e = e:gsub("%)","")
+            
+--                    local m = e:gmatch("%w+")
+--                    for m2 in m do
+--                        print("m2="..m2)
+--                    end
+            
+            -- convert terms to numbers
+            local f3 = function(e)
+                --print("f3 e="..e)
+                -- convert individual term to number or substitute variable
+                local f4 = function(e)
+                    local ret = util.toNumber(e)
+                    ret = ret or util.toNumber(patcher.variables[e])
+                    if not ret then return original end
+                    if patcher.base == 16 then
+                        ret = string.format("%02x",ret)
+                    else
+                        ret = tostring(ret)
+                    end
+                    --print("ret = "..ret)
+                    return ret
+                end
+                
+                e = e:gsub("%w+", f4)
+                return e
+            end
+            
+            e = e:gsub("%w+", f3)
+            return e
+        end
+        
+        e = e:gsub("%([%w%+%-%*%/]+%)", f2)
+        return e
+    end
+    
+    e = "("..e..")"
+    for i=1,100 do
+        local olde=e
+        e = f(e)
+        if e==olde then break end
+    end
+    --print("result after removing parenthesis:"..e)
+    
+    
+--            e = e:gsub("%w+","0x%1")
+--            print(e)
+--            if true then return end
+    
+    local operations = {
+        ["*"]= function(x,y) return x*y end,
+        ["/"]= function(x,y) return x/y end,
+        ["+"]= function(x,y) return x+y end,
+        ["-"]= function(x,y) return x-y end,
+    }
+    
+    for i=1, 1000 do
+        local olde=e
+        for _,op in ipairs{"*","/","+","-"} do
+            if e:match("%w+[%"..op.."]%w+") then
+                
+                --print(e:match("%w+[%"..op.."]%w+"))
+                
+                local f = function(m,op,m2)
+                    m = util.toNumber(m, patcher.base)
+                    m2 = util.toNumber(m2, patcher.base)
+                    --printf("m=%s, m2=%s, op=%s",m,m2,op)
+                    local ret = operations[op](m,m2,op)
+                    if patcher.base==16 then
+                        ret = string.format("%02x",ret)
+                    else
+                        ret = tostring(ret)
+                    end
+                    --print("ret="..ret)
+                    return ret
+                end
+                
+                e=e:gsub("(%w+)([%"..op.."])(%w+)",f)
+                --print("e="..e)
+            end
+        end
+        if e==olde then break end
+    end
+    return e
+end
+
 
 --local condition = load_code("return " .. args.condition, context)
 
@@ -304,6 +404,7 @@ util.toNumber = function(s, base)
     base = base or patcher.base
     local n
     if type(s)=="number" then return s end
+    if type(s)=="nil" then return end
     s=util.trim(s)
     if s=="_" then
         n=patcher.results[patcher.results.index].address
@@ -2390,99 +2491,8 @@ while true do
             end
         elseif keyword=="expression" then
             local e = data
-            e = e:gsub(" ", "")
-            print("expression: "..e)
             
-            -- find innermost parenthesis
-            local f = function(e)
-                
-                -- split up terms by finding words
-                local f2= function(e)
-                    --print("f2 e="..e)
-                    
-                    e = e:gsub("%(","")
-                    e = e:gsub("%)","")
-                    
---                    local m = e:gmatch("%w+")
---                    for m2 in m do
---                        print("m2="..m2)
---                    end
-                    
-                    -- convert terms to numbers
-                    local f3 = function(e)
-                        --print("f3 e="..e)
-                        -- convert individual term to number or substitute variable
-                        local f4 = function(e)
-                            local ret = util.toNumber(e)
-                            ret = ret or util.toNumber(patcher.variables[e])
-                            if patcher.base == 16 then
-                                ret = string.format("%02x",ret)
-                            else
-                                ret = tostring(ret)
-                            end
-                            --print("ret = "..ret)
-                            return ret
-                        end
-                        
-                        e = e:gsub("%w+", f4)
-                        return e
-                    end
-                    
-                    e = e:gsub("%w+", f3)
-                    return e
-                end
-                
-                e = e:gsub("%([%w%+%-%*%/]+%)", f2)
-                return e
-            end
-            
-            e = "("..e..")"
-            for i=1,100 do
-                local olde=e
-                e = f(e)
-                if e==olde then break end
-            end
-            --print("result after removing parenthesis:"..e)
-            
-            
---            e = e:gsub("%w+","0x%1")
---            print(e)
---            if true then return end
-            
-            local operations = {
-                ["*"]= function(x,y) return x*y end,
-                ["/"]= function(x,y) return x/y end,
-                ["+"]= function(x,y) return x+y end,
-                ["-"]= function(x,y) return x-y end,
-            }
-            
-            for i=1, 1000 do
-                local olde=e
-                for _,op in ipairs{"*","/","+","-"} do
-                    if e:match("%w+[%"..op.."]%w+") then
-                        
-                        --print(e:match("%w+[%"..op.."]%w+"))
-                        
-                        local f = function(m,op,m2)
-                            m = util.toNumber(m, patcher.base)
-                            m2 = util.toNumber(m2, patcher.base)
-                            --printf("m=%s, m2=%s, op=%s",m,m2,op)
-                            local ret = operations[op](m,m2,op)
-                            if patcher.base==16 then
-                                ret = string.format("%02x",ret)
-                            else
-                                ret = tostring(ret)
-                            end
-                            --print("ret="..ret)
-                            return ret
-                        end
-                        
-                        e=e:gsub("(%w+)([%"..op.."])(%w+)",f)
-                        --print("e="..e)
-                    end
-                end
-                if e==olde then break end
-            end
+            e = patcher.doExpression(e)
             
             print("result:"..e)
             patcher.variables.RET = util.toNumber(e)
@@ -2651,6 +2661,16 @@ while true do
                     v = string.format("%x",v)
                 end
                 printf("%s = %s",k,v)
+            end
+        elseif keyword == "expr" then
+            local err, switch
+            switch, err = util.switch(data, true)
+            if err then
+                warning('Invalid switch value for %s: "%s"',keyword, data)
+            elseif switch then
+                patcher.EXPR = true
+            else
+                patcher.EXPR = false
             end
         elseif keyword == "deftype" then
             local t = util.trim(data)
@@ -3342,7 +3362,18 @@ while true do
             -- label, pass.
         elseif (assignment == true) and (patcher.strict~=true) then
             local k,v = util.trim(keyword), util.trim(data)
-            if #util.split(k,"[")>1 then
+
+            if patcher.EXPR then
+                -- if it's surrounded by quotes, just set it as a literal string
+                if util.startsWith(v, '"') and util.endsWith(v, '"') then
+                    v=v:sub(2,#v-1) -- remove first and last characters
+                    patcher.variables[k] = v
+                    printVerbose('Variable: %s = "%s"', keyword, v)
+                else
+                    local e = patcher.doExpression(v)
+                    patcher.variables[k] = util.toNumber(e) or e
+                end
+            elseif #util.split(k,"[")>1 then
                 -- it's an array
                     local arrayIndex = util.toNumber(util.split(util.split(k,"[")[2], "]")[1])
                     k= util.split(k,"[")[1]
