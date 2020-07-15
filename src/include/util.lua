@@ -56,10 +56,12 @@ function util.switch(s, default)
 end
 
 function util.startsWith(haystack, needle)
+    if type(haystack) ~="string" then return end
     return string.sub(haystack, 1, string.len(needle)) == needle
 end
 
 function util.endsWith(haystack, needle)
+   if type(haystack) ~="string" then return end
    return needle=='' or string.sub(haystack,-string.len(needle))==needle
 end
 

@@ -1592,8 +1592,25 @@ while true do
             -- interpolate foo%i%-->n
             -- // n==baz
             patcher.variables.RET=patcher.variables[patcher.replaceVariables(data)]
-        elseif keyword == "_random" then
-            local r = rng:random(0, 255)
+        elseif keyword == "random" then
+            data = data or ""
+            data = util.split(data,patcher.variables.DELIM)
+            if data[1] then
+                n1=util.toNumber(data[1])
+            end
+            if data[2] then
+                n2=util.toNumber(data[2])
+            end
+            
+            if n1==nil and n2==nil then
+                n1=0
+                n2=255
+            elseif n2==nil then
+                n2=n1
+                n1=0
+            end
+            local r = rng:random(n1, n2)
+            
             patcher.variables['RET'] = r
         elseif util.startsWith(line, "//") then
             -- comment
@@ -1637,7 +1654,6 @@ while true do
                     -- set verboseLevel to normal
                     patcher.verboseLevel = 1
                 end
-                
             end
         elseif keyword == "strict" or keyword == "annotations" then
             local err
