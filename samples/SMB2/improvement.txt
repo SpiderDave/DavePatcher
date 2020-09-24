@@ -1,3 +1,23 @@
+// change "PUSH START BUTTON" to "PUSH  START" to match all-stars version
+// Change PRINCESS to PEACH in contributor text
+// Change PRINCESS to PEACH in credits
+// Change HOOPSTAR to HOOPSTER in credits
+// Change BIRDO to OSTRO in credits
+// Change OSTRO to BIRDO in credits
+// Change CLAWGLIP to CLAWGRIP in credits
+// Change TRICLYDE to TRYCLYDE in credits
+// Restore missing elipses character on select screen
+// On Bonus Chance screen, change "PUSH (A) BUTTON" to "PRESS BUTTON"
+// Fix controller input issue when doing a charge up jump while holding something
+// Fix offset of the letter "O" in one frame of POW animation
+// Restore missing 8th animation frame for tiles
+// Restore death sound effect
+// Adjust Mario's skin tone
+// Fix the misaligned borders on title and bonus chance screen
+// Fix the broken bush on bonus chance screen
+// Fix Luigi and held enemy graphics on title and bonus chance screen
+// Fix root top graphics on title screen and bonus game to match what's in game.
+
 textmap 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-?., d0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5cff7
 textmap space fb
 
@@ -88,3 +108,40 @@ put 1fb36 a9088d0306ad022010fba9808d010660
 // Adjust Mario's skin tone
 put 1442a 011636 // Mario palette
 put 1e0d9 361601 // Mario palette (select screen)
+
+// Taken from https://nesrocks.com/blog/smb2-fix/
+// Fix the misaligned borders on title and bonus chance screen
+// Fix the broken bush on bonus chance screen
+put 0016fd 13
+put 001714 2d
+put 001734 66686d6f71736a6b74
+put 00173e 999b74
+put 00174f 76
+put 014210 13
+put 014227 2d11
+put 014235 fb84868c8e23431b479496
+put 014243 74a3a5
+put 014253 7485878d8f2364059597fdaaab2376049c9daa
+
+// Fix root top graphics on title screen and bonus game to match
+// what's in game.
+
+// Fix for roots on title and bonus chance screens:
+// * Wipe gfx and fill with ff, then copy one plane for the
+//   sillouhette effect
+
+// title root fix
+fill 2aaa0 20 ff
+copy 26308 2aaa0 08
+copy 26318 2aab0 08
+
+// bonus chance root fix
+fill 2daa0 20 ff
+copy 26308 2daa0 08
+copy 26318 2dab0 08
+
+// Fix Luigi and held enemy graphics on title and bonus chance screen
+palette 22371607
+import map title_luigi smb2_title_luigi_fixed.png
+import map bonus_luigi smb2_title_luigi_fixed.png
+

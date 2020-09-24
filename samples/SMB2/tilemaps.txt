@@ -1117,3 +1117,43 @@ start tilemap Princess_select2
     2e 08 10
     2f 08 18
 end tilemap
+
+start tilemap title_luigi
+    gridsize = 1
+    address = 2a000
+    palette = 22371607
+    a6 00 00
+    a7 00 08
+    a8 08 00
+    a9 08 08
+    
+    90 00 10
+    91 00 18
+    92 08 10
+    93 08 18
+
+    94 00 20
+    95 00 28
+    96 08 20
+    97 08 28
+end tilemap
+
+start tilemap bonus_luigi
+    gridsize = 1
+    address = 2d000
+    palette = 22371607
+    a6 00 00
+    a7 00 08
+    a8 08 00
+    a9 08 08
+    
+    90 00 10
+    91 00 18
+    92 08 10
+    93 08 18
+
+    94 00 20
+    95 00 28
+    96 08 20
+    97 08 28
+end tilemap

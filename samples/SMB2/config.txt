@@ -3,9 +3,6 @@ oldFile = ../../backup/Super Mario Bros. 2 (USA) (Rev A).nes
 //newFile = SMB2 Improvement.nes
 newFile = SMB2 Improvement.ips
 
-// release or test
-build=test
-
 //cheats = true
 
 exportGraphics = false
