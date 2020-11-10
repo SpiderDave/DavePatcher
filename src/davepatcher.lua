@@ -513,7 +513,7 @@ patcher.help.extra = [[Some commands require Lua Cairo (recommended) <http://www
 --or--
 Lua-GD <https://sourceforge.net/projects/lua-gd/>
 
-For documentation, see <http://spiderdave.com/davepatcher/ref.php>
+For documentation, see <http://spiderdave.me/davepatcher/ref.php>
 ]]
 patcher.help.info = string.format("%s %s - %s <%s>",patcher.info.name,patcher.info.version, patcher.info.author,patcher.info.url)
 patcher.help.description = "A custom patcher for use with NES romhacking or general use."
@@ -1135,6 +1135,7 @@ function imageToTile(len, fileName)
     end
     local tileData = ""
     for t=0,nTiles-1 do
+        print(#out.t[t])
         for i=0,#out.t[t] do
             tileData = tileData .. string.char(out.t[t][i])
         end
@@ -2885,6 +2886,13 @@ while true do
                     printVerbose('Variable: %s = 0x%x (%s)', varName, patcher.variables[varName], patcher.variables[varName])
                 end
             end
+        elseif keyword == "isbyte" then
+            n = util.toNumber(data) or -1
+            if n>=0 and n<=255 then
+                patcher.variables["RET"] = 1
+            else
+                patcher.variables["RET"] = 0
+            end
         elseif keyword == "coalesce" then
             patcher.variables["RET"] = nil
             for k,v in ipairs(util.split(data, patcher.variables.DELIM or " ")) do
@@ -3237,6 +3245,7 @@ while true do
             printf("%s: %s bytes",diff.fileName, #diff.data)
             diff.old2=""
             diff.new2=""
+            diff.lastSame=0
             for i = 0,#patcher.newFileData -1 do
                 diff.old =string.byte(patcher.newFileData:sub(i+patcher.offset+1,i+patcher.offset+1))
                 diff.new =string.byte(diff.data:sub(i+patcher.offset+1,i+patcher.offset+1))
@@ -3252,6 +3261,9 @@ while true do
                     if diff.lastChange == i-1 then
                         --print("*************")
                         --printf("%06x %06x", diff.lastSame+1, diff.lastChange - diff.lastSame)
+                        if not diff.lastSame then
+                            print('???????')
+                        end
                         diff.old2 = bin2hex(patcher.newFileData:sub(diff.lastSame+patcher.offset+2,diff.lastSame+patcher.offset+(diff.lastChange - diff.lastSame+1)))
                         diff.new2 = bin2hex(diff.data:sub(diff.lastSame+patcher.offset+2,diff.lastSame+patcher.offset+(diff.lastChange - diff.lastSame+1)))
                         if compact then

@@ -33,8 +33,8 @@ Gui, Add, Text, x134 y18 w300 vpatchFileLabel,
 Gui, Add, Text, x134 y+18 w400 vRunStatus,
 
 ;Gui, Font, underline
-;Gui, Add, Link, x12 y8,<a href="http://spiderdave.com">spiderdave.com</a>
-;Gui, Add, Link, x+8,<a href="http://spiderdave.com/davepatcher/ref.php">davepatcher docs</a>
+;Gui, Add, Link, x12 y8,<a href="https://spiderdave.me">spiderdave.me</a>
+;Gui, Add, Link, x+8,<a href="https://spiderdave.me/davepatcher/ref.php">davepatcher docs</a>
 ;Gui, Add, Link, x+8,<a href="https://github.com/SpiderDave/DavePatcher">github</a>
 ;Gui, Font, norm
 
@@ -162,8 +162,8 @@ Gui, 2: Add, Link, x20 y+2, DavePatcher Launcher made with <a href="https://auto
 gui, 2: Add, Link, x20 y+32, <a href="bitcoin:1EZWWNGMsCrTciXLS6EvSjwq3cZBTG1qQk">Donate Bitcoin</a>
 
 Gui, 2: Font, s12
-Gui, 2: Add, Link, x12 y370,<a href="http://spiderdave.com">spiderdave.com</a>
-Gui, 2: Add, Link, x+12,<a href="http://spiderdave.com/davepatcher/ref.php">davepatcher docs</a>
+Gui, 2: Add, Link, x12 y370,<a href="https://spiderdave.me">spiderdave.me</a>
+Gui, 2: Add, Link, x+12,<a href="https://spiderdave.me/davepatcher/ref.php">davepatcher docs</a>
 Gui, 2: Add, Link, x+12,<a href="https://github.com/SpiderDave/DavePatcher">github</a>
 
 
@@ -180,7 +180,7 @@ return
 HelpMenuHandler:
 i:=A_ThisMenuItem
 if i=DavePatcher Help
-    run http://spiderdave.com/davepatcher/ref.php
+    run http://spiderdave.me/davepatcher/ref.php
 if i=About
     goto ShowAbout
     ;MsgBox, DavePatcher`nby SpiderDave`n`nLatest version available on github https://github.com/SpiderDave/DavePatcher
